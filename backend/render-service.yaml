@@ -1,12 +1,17 @@
+# Arquivo alternativo caso o render.yaml principal não funcione
 services:
   - type: web
     name: gedo-cimcop-backend
     env: python
-    buildCommand: pip install -r requirements.txt
+    region: oregon
+    plan: free
+    buildCommand: |
+      python --version
+      pip install --upgrade pip
+      pip install -r requirements.txt
     startCommand: python src/main.py
     runtime: python
     pythonVersion: "3.10.13"
-    rootDir: ./backend
     envVars:
       - key: FLASK_ENV
         value: production
@@ -16,15 +21,3 @@ services:
         value: https://seu-frontend.vercel.app
       - key: PORT
         value: 5000
-
-  - type: web
-    name: gedo-cimcop-frontend
-    env: node
-    buildCommand: npm install && npm run build
-    startCommand: npm start
-    rootDir: ./frontend
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: REACT_APP_API_URL
-        value: https://gedo-cimcop-backend.onrender.com
