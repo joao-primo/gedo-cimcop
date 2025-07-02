@@ -1,109 +1,72 @@
 import os
-from datetime import timedelta
-
+from urllib.parse import urlparse
 
 class Config:
-    """Configuração base"""
-    SECRET_KEY = os.environ.get('SECRET_KEY') or 'gedo-cimcop-secret-key-2024'
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'dev-secret-key')
+    
+    # Configuração do banco de dados
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    
+    if DATABASE_URL:
+        # Produção - PostgreSQL
+        if DATABASE_URL.startswith('postgres://'):
+            DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+        SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    else:
+        # Desenvolvimento - SQLite
+        basedir = os.path.abspath(os.path.dirname(__file__))
+        db_dir = os.path.join(basedir, 'database')
+        os.makedirs(db_dir, exist_ok=True)
+        SQLALCHEMY_DATABASE_URI = f'sqlite:///{os.path.join(db_dir, "gedo_cimcop.db")}'
+    
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    SQLALCHEMY_RECORD_QUERIES = True
-
-    # Upload settings
-    MAX_CONTENT_LENGTH = 16 * 1024 * 1024  # 16MB
-    UPLOAD_FOLDER = os.environ.get('UPLOAD_FOLDER') or 'uploads'
-
-    # Session settings
-    PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
-    SESSION_COOKIE_SECURE = False  # True em produção com HTTPS
-    SESSION_COOKIE_HTTPONLY = True
-    SESSION_COOKIE_SAMESITE = 'Lax'
-
-    # Email settings
-    EMAIL_SERVIDOR = os.environ.get('EMAIL_SERVIDOR', 'smtp.gmail.com')
-    EMAIL_PORTA = int(os.environ.get('EMAIL_PORTA', 587))
-    EMAIL_USUARIO = os.environ.get('EMAIL_USUARIO', '')
-    EMAIL_SENHA = os.environ.get('EMAIL_SENHA', '')
-    EMAIL_USE_TLS = os.environ.get('EMAIL_USE_TLS', 'True').lower() == 'true'
-    EMAIL_FROM = os.environ.get('EMAIL_FROM', 'noreply@gedo.com')
-
-    # Frontend URL
-    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
-
-    # Security headers
-    SECURITY_HEADERS = {
-        'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY',
-        'X-XSS-Protection': '1; mode=block',
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
     }
-
-    @staticmethod
-    def init_app(app):
-        pass
-
+    
+    # JWT Configuration
+    JWT_SECRET_KEY = os.environ.get('JWT_SECRET_KEY', SECRET_KEY)
+    JWT_ACCESS_TOKEN_EXPIRES = 3600  # 1 hora
+    
+    # CORS Configuration
+    FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:3000')
 
 class DevelopmentConfig(Config):
-    """Configuração de desenvolvimento"""
     DEBUG = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DEV_DATABASE_URL') or \
-        'sqlite:///' + \
-        os.path.join(os.path.dirname(__file__), 'database', 'app.db')
-
-    # CORS mais permissivo para desenvolvimento
-    CORS_ORIGINS = [
-        "http://localhost:5173",
-        "http://127.0.0.1:5173",
-        "http://localhost:3000"
-    ]
-
-
-class TestingConfig(Config):
-    """Configuração de testes"""
-    TESTING = True
-    SQLALCHEMY_DATABASE_URI = os.environ.get(
-        'TEST_DATABASE_URL') or 'sqlite:///:memory:'
-    WTF_CSRF_ENABLED = False
-
-
-class ProductionConfig(Config):
-    """Configuração de produção"""
-    DEBUG = False
-    SQLALCHEMY_DATABASE_URI = os.environ.get('DATABASE_URL') or \
-        'sqlite:///' + \
-        os.path.join(os.path.dirname(__file__), 'database', 'app.db')
-
-    # Configurações de segurança para produção
-    SESSION_COOKIE_SECURE = True  # Requer HTTPS
-    SECURITY_HEADERS = {
-        'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY',
-        'X-XSS-Protection': '1; mode=block',
-        'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-        'Content-Security-Policy': "default-src 'self'",
+    FLASK_ENV = 'development'
+    
+    # Configurações do SQLAlchemy para desenvolvimento
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': -1
     }
 
-    # CORS restritivo para produção
-    CORS_ORIGINS = [os.environ.get('FRONTEND_URL', 'https://yourdomain.com')]
+class ProductionConfig(Config):
+    DEBUG = False
+    FLASK_ENV = 'production'
+    # Configuração de produção - PostgreSQL
+    DATABASE_URL = os.environ.get('DATABASE_URL')
+    if DATABASE_URL:
+        # Fix para Render/Heroku que às vezes usa postgres:// ao invés de postgresql://
+        if DATABASE_URL.startswith('postgres://'):
+            DATABASE_URL = DATABASE_URL.replace('postgres://', 'postgresql://', 1)
+        SQLALCHEMY_DATABASE_URI = DATABASE_URL
+    else:
+        # Fallback para SQLite se DATABASE_URL não estiver definida
+        SQLALCHEMY_DATABASE_URI = 'sqlite:///' + \
+            os.path.join(os.path.dirname(__file__), 'database', 'app.db')
 
-    @classmethod
-    def init_app(cls, app):
-        Config.init_app(app)
-
-        # Log para syslog em produção
-        import logging
-        from logging.handlers import SysLogHandler
-        syslog_handler = SysLogHandler()
-        syslog_handler.setLevel(logging.WARNING)
-        app.logger.addHandler(syslog_handler)
-
+    # Configurações específicas para PostgreSQL em produção
+    SQLALCHEMY_ENGINE_OPTIONS = {
+        'pool_pre_ping': True,
+        'pool_recycle': 300,
+        'pool_timeout': 20,
+        'max_overflow': 0
+    }
 
 config = {
     'development': DevelopmentConfig,
-    'testing': TestingConfig,
     'production': ProductionConfig,
     'default': DevelopmentConfig
 }
-
-
-def get_config():
-    """Retorna a configuração baseada na variável de ambiente"""
-    return config[os.getenv('FLASK_ENV', 'development')]

@@ -1,0 +1,10 @@
+FROM postgres:15-alpine
+
+ENV POSTGRES_DB=gedo_cimcop
+ENV POSTGRES_USER=gedo_user
+ENV POSTGRES_PASSWORD=gedo_password
+
+# Criar script de inicialização
+COPY init.sql /docker-entrypoint-initdb.d/
+
+EXPOSE 5432

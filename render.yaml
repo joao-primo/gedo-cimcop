@@ -12,19 +12,25 @@ services:
         value: production
       - key: SECRET_KEY
         value: gedo-cimcop-super-secret-key-production-2024
+      - key: JWT_SECRET_KEY
+        value: gedo-cimcop-jwt-secret-key-2024
       - key: FRONTEND_URL
         value: https://seu-frontend.vercel.app
       - key: PORT
         value: 5000
 
-  - type: web
-    name: gedo-cimcop-frontend
-    env: node
-    buildCommand: npm install && npm run build
-    startCommand: npm start
-    rootDir: ./frontend
-    envVars:
-      - key: NODE_ENV
-        value: production
-      - key: REACT_APP_API_URL
-        value: https://gedo-cimcop-backend.onrender.com
+  # Banco de dados PostgreSQL
+  - type: pserv
+    name: gedo-cimcop-db
+    env: docker
+    plan: free
+    dockerfilePath: ./Dockerfile.postgres
+    disk:
+      name: postgres-data
+      mountPath: /var/lib/postgresql/data
+      sizeGB: 1
+
+databases:
+  - name: gedo-cimcop-db
+    databaseName: gedo_cimcop
+    user: gedo_user
