@@ -1,157 +1,116 @@
-from flask import Flask, jsonify, request
-from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
-from flask_jwt_extended import JWTManager
-import os
-import logging
+from routes.workflow import workflow_bp
+from routes.pesquisa import pesquisa_bp
+from routes.dashboard import dashboard_bp
+from routes.registros import registros_bp
+from routes.tipos_registro import tipos_registro_bp
+from routes.obras import obras_bp
+from routes.auth import auth_bp
+from routes.user import user_bp
+from routes.configuracoes import configuracoes_bp, init_configuracoes
+from routes.importacao import importacao_bp
+from routes.password_reset import password_reset_bp
+from models.configuracao_workflow import ConfiguracaoWorkflow
+from models.configuracao import Configuracao, ConfiguracaoUsuario
+from models.registro import Registro
+from models.tipo_registro import TipoRegistro
+from models.obra import Obra
+from models.user import db, User
+from models.password_reset import PasswordResetToken
+from models.audit_log import AuditLog
 from config import config
+from flask_cors import CORS
+from flask import Flask, send_from_directory
+import os
+import sys
+import logging
 
 # Configurar logging
-logging.basicConfig(level=logging.INFO)
+logging.basicConfig(
+    level=logging.INFO,
+    format='%(asctime)s %(levelname)s %(name)s %(message)s'
+)
 logger = logging.getLogger(__name__)
 
-
-def ensure_database_directory():
-    """Garantir que o diretório do banco existe (apenas para SQLite)"""
-    config_name = os.getenv('FLASK_ENV', 'development')
-    if config_name != 'production':  # Só criar diretório se não for produção
-        db_dir = os.path.join(os.path.dirname(__file__), 'database')
-        if not os.path.exists(db_dir):
-            os.makedirs(db_dir)
-            logger.info(f"📁 Diretório do banco criado: {db_dir}")
+# Adicionar o diretório atual ao path para importar services
+sys.path.insert(0, os.path.dirname(__file__))
+sys.path.insert(0, os.path.dirname(os.path.dirname(__file__)))
 
 
-# Inicializar extensões
-db = SQLAlchemy()
-jwt = JWTManager()
+def create_app(config_name=None):
+    """Factory function para criar a aplicação Flask"""
+    if config_name is None:
+        config_name = os.getenv('FLASK_ENV', 'development')
 
+    app = Flask(__name__, static_folder=os.path.join(
+        os.path.dirname(__file__), 'static'))
 
-def create_app():
-    app = Flask(__name__)
+    # Carregar configuração
+    app.config.from_object(config[config_name])
+    config[config_name].init_app(app)
 
-    # Configuração baseada no ambiente
-    env = os.environ.get('FLASK_ENV', 'development')
-    app.config.from_object(config.get(env, config['default']))
+    # Configurar CORS baseado no ambiente
+    if config_name == 'production':
+        allowed_origins = [app.config['FRONTEND_URL']]
+        if os.getenv('ADDITIONAL_ORIGINS'):
+            allowed_origins.extend(os.getenv('ADDITIONAL_ORIGINS').split(','))
+
+        CORS(app,
+             origins=allowed_origins,
+             supports_credentials=True,
+             methods=["GET", "POST", "PUT", "DELETE"],
+             allow_headers=["Content-Type", "Authorization"])
+    else:
+        # Desenvolvimento - mais permissivo
+        CORS(app,
+             origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+             supports_credentials=True,
+             methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             allow_headers=["Content-Type", "Authorization"])
 
     # Inicializar extensões
     db.init_app(app)
-    jwt.init_app(app)
 
-    # Configurar CORS
-    CORS(app, origins=[app.config['FRONTEND_URL']])
+    # Registrar blueprints
+    app.register_blueprint(user_bp, url_prefix='/api/users')
+    app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(password_reset_bp, url_prefix='/api')
+    app.register_blueprint(obras_bp, url_prefix='/api/obras')
+    app.register_blueprint(tipos_registro_bp, url_prefix='/api/tipos-registro')
+    app.register_blueprint(registros_bp, url_prefix='/api/registros')
+    app.register_blueprint(dashboard_bp, url_prefix='/api/dashboard')
+    app.register_blueprint(pesquisa_bp, url_prefix='/api/pesquisa')
+    app.register_blueprint(configuracoes_bp, url_prefix='/api/configuracoes')
+    app.register_blueprint(importacao_bp, url_prefix='/api/importacao')
+    app.register_blueprint(workflow_bp, url_prefix='/api/workflow')
 
-    # Registrar blueprints/rotas
-    register_routes(app)
+    # Middleware de segurança
+    @app.after_request
+    def security_headers(response):
+        """Adiciona headers de segurança"""
+        if config_name == 'production':
+            response.headers['X-Content-Type-Options'] = 'nosniff'
+            response.headers['X-Frame-Options'] = 'DENY'
+            response.headers['X-XSS-Protection'] = '1; mode=block'
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+            response.headers['Content-Security-Policy'] = "default-src 'self'"
+        return response
 
-    # Criar tabelas
-    with app.app_context():
-        ensure_database_directory()  # Mudança aqui
-        try:
-            db.create_all()
-            logger.info("✅ Tabelas do banco de dados criadas com sucesso!")
-        except Exception as e:
-            logger.error(f"❌ Erro ao criar tabelas: {str(e)}")
-            raise
+    # Handlers de erro
+    @app.errorhandler(404)
+    def not_found(error):
+        return {'message': 'Recurso não encontrado'}, 404
+
+    @app.errorhandler(500)
+    def internal_error(error):
+        db.session.rollback()
+        logger.error(f"Erro interno: {str(error)}")
+        return {'message': 'Erro interno do servidor'}, 500
+
+    @app.errorhandler(413)
+    def too_large(error):
+        return {'message': 'Arquivo muito grande'}, 413
 
     return app
-
-
-def register_routes(app):
-    @app.route('/')
-    def home():
-        return jsonify({
-            'message': 'GEDO CIMCOP API está funcionando!',
-            'status': 'success',
-            'environment': os.environ.get('FLASK_ENV', 'development'),
-            'database': 'PostgreSQL' if os.environ.get('DATABASE_URL') else 'SQLite'
-        })
-
-    @app.route('/api/health', methods=['GET'])
-    def health_check():
-        """Verificação de saúde da API"""
-        # Detectar tipo de banco
-        database_url = app.config.get('SQLALCHEMY_DATABASE_URI', '')
-        if database_url.startswith('postgresql://'):
-            db_type = 'PostgreSQL'
-        elif database_url.startswith('sqlite://'):
-            db_type = 'SQLite'
-        else:
-            db_type = 'Unknown'
-
-        # Testar conexão com banco
-        try:
-            db.session.execute('SELECT 1')
-            db_status = 'connected'
-        except Exception as e:
-            db_status = f'error: {str(e)}'
-
-        return {
-            'status': 'ok',
-            'message': 'GEDO CIMCOP API está funcionando',
-            'version': '1.0.0',
-            'environment': os.getenv('FLASK_ENV', 'development'),
-            'database': {
-                'type': db_type,
-                'status': db_status
-            },
-            'features': [
-                'Autenticação',
-                'Gestão de Obras',
-                'Registros de Documentos',
-                'Pesquisa Avançada',
-                'Dashboard',
-                'Configurações',
-                'Importação em Lote',
-                'Reset de Senha'
-            ]
-        }, 200
-
-    @app.route('/api/test')
-    def test_api():
-        return jsonify({
-            'message': 'API funcionando corretamente!',
-            'timestamp': str(db.func.now())
-        })
-
-# Modelos de exemplo (você pode expandir conforme necessário)
-
-
-class User(db.Model):
-    __tablename__ = 'users'
-
-    id = db.Column(db.Integer, primary_key=True)
-    username = db.Column(db.String(80), unique=True, nullable=False)
-    email = db.Column(db.String(120), unique=True, nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'username': self.username,
-            'email': self.email,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
-
-
-class Document(db.Model):
-    __tablename__ = 'documents'
-
-    id = db.Column(db.Integer, primary_key=True)
-    title = db.Column(db.String(200), nullable=False)
-    description = db.Column(db.Text)
-    user_id = db.Column(db.Integer, db.ForeignKey('users.id'), nullable=False)
-    created_at = db.Column(db.DateTime, default=db.func.current_timestamp())
-
-    user = db.relationship('User', backref=db.backref('documents', lazy=True))
-
-    def to_dict(self):
-        return {
-            'id': self.id,
-            'title': self.title,
-            'description': self.description,
-            'user_id': self.user_id,
-            'created_at': self.created_at.isoformat() if self.created_at else None
-        }
 
 
 def check_database_integrity():
@@ -161,26 +120,179 @@ def check_database_integrity():
         db.session.execute('SELECT 1')
         logger.info("✅ Conexão com banco de dados: OK")
 
-        # Assuming ConfiguracaoWorkflow and PasswordResetToken are defined elsewhere
-        # For demonstration purposes, I'm commenting out these lines.
-        # ConfiguracaoWorkflow.query.first()
-        # logger.info("✅ Tabela configuracoes_workflow: OK")
+        ConfiguracaoWorkflow.query.first()
+        logger.info("✅ Tabela configuracoes_workflow: OK")
 
-        # PasswordResetToken.query.first()
-        # logger.info("✅ Tabela password_reset_tokens: OK")
+        PasswordResetToken.query.first()
+        logger.info("✅ Tabela password_reset_tokens: OK")
         return True
     except Exception as e:
         logger.error(f"❌ Problema nas tabelas: {e}")
         return False
 
 
+def create_default_data():
+    """Criar dados padrão do sistema"""
+    if not check_database_integrity():
+        logger.warning("⚠️ Problemas detectados no banco de dados!")
+        return False
+
+    # Criar usuário admin padrão apenas se não existir
+    admin = db.session.query(User).filter_by(email='admin@gedo.com').first()
+    if not admin:
+        admin = User(
+            username='admin',
+            email='admin@gedo.com',
+            password='admin123',  # Senha simples para teste
+            role='administrador',
+            must_change_password=False  # Para facilitar o teste inicial
+        )
+        db.session.add(admin)
+        logger.info("✅ Usuário admin criado")
+        logger.info("📧 Email: admin@gedo.com")
+        logger.info("🔑 Senha: admin123")
+    else:
+        logger.info("ℹ️ Usuário admin já existe")
+
+    # Criar tipos de registro padrão
+    tipos_padrao = [
+        "Aditivo", "ART", "Ata", "Carta Preposto", "Contrato", "Croqui", "E-mail",
+        "Especificação Técnica", "Ficha de Verificação", "Memorial Descritivo",
+        "Memorando / Ofício / Correspondência", "Notificação", "Ordens de Serviço",
+        "Plano de Ataque", "Plano de Ação", "RDO", "Relatório", "Seguro",
+        "SIT / NAP / QTO", "Termo de Entrega Definitivo", "Termo de Entrega Provisória"
+    ]
+
+    for tipo_nome in tipos_padrao:
+        tipo_existente = db.session.query(
+            TipoRegistro).filter_by(nome=tipo_nome).first()
+        if not tipo_existente:
+            tipo = TipoRegistro(
+                nome=tipo_nome,
+                descricao=f'Tipo de registro: {tipo_nome}'
+            )
+            db.session.add(tipo)
+
+    try:
+        db.session.commit()
+        init_configuracoes()
+        return True
+    except Exception as e:
+        logger.error(f"Erro ao criar dados padrão: {e}")
+        db.session.rollback()
+        return False
+
+
+def create_database_directory():
+    """Criar diretório do banco de dados se não existir (apenas para SQLite)"""
+    # Só criar diretório se não estiver em produção (PostgreSQL)
+    config_name = os.getenv('FLASK_ENV', 'development')
+    if config_name != 'production' and not os.environ.get('DATABASE_URL'):
+        db_dir = os.path.join(os.path.dirname(__file__), 'database')
+        if not os.path.exists(db_dir):
+            os.makedirs(db_dir)
+            logger.info(f"📁 Diretório do banco criado: {db_dir}")
+
+
+# Criar aplicação
+app = create_app()
+
+# Inicialização do banco de dados
+with app.app_context():
+    create_database_directory()
+
+    # Log do tipo de banco sendo usado
+    database_url = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    if database_url.startswith('postgresql://'):
+        logger.info("🗄️ Usando PostgreSQL (Produção)")
+    elif database_url.startswith('sqlite://'):
+        logger.info("🗄️ Usando SQLite (Desenvolvimento)")
+    else:
+        logger.info("🗄️ Tipo de banco: Desconhecido")
+
+    db.create_all()
+    logger.info("🗄️ Tabelas do banco de dados criadas/verificadas")
+
+    if create_default_data():
+        logger.info("📊 Dados padrão inicializados")
+        logger.info("✅ Sistema GEDO CIMCOP inicializado com sucesso!")
+        logger.info("")
+        logger.info("🔑 CREDENCIAIS DE LOGIN:")
+        logger.info("   Email: admin@gedo.com")
+        logger.info("   Senha: admin123")
+    else:
+        logger.warning("⚠️ Sistema iniciado com problemas no banco de dados")
+
+
+@app.route('/', defaults={'path': ''})
+@app.route('/<path:path>')
+def serve(path):
+    """Servir arquivos estáticos do frontend"""
+    static_folder_path = app.static_folder
+    if path and os.path.exists(os.path.join(static_folder_path, path)):
+        return send_from_directory(static_folder_path, path)
+    index_path = os.path.join(static_folder_path, 'index.html')
+    if os.path.exists(index_path):
+        return send_from_directory(static_folder_path, 'index.html')
+    return "GEDO CIMCOP - Sistema de Gerenciamento de Documentos e Registros de Obras", 200
+
+
+@app.route('/api/health', methods=['GET'])
+def health_check():
+    """Verificação de saúde da API"""
+    # Detectar tipo de banco
+    database_url = app.config.get('SQLALCHEMY_DATABASE_URI', '')
+    if database_url.startswith('postgresql://'):
+        db_type = 'PostgreSQL'
+    elif database_url.startswith('sqlite://'):
+        db_type = 'SQLite'
+    else:
+        db_type = 'Unknown'
+
+    # Testar conexão com banco
+    try:
+        db.session.execute('SELECT 1')
+        db_status = 'connected'
+    except Exception as e:
+        db_status = f'error: {str(e)}'
+
+    return {
+        'status': 'ok',
+        'message': 'GEDO CIMCOP API está funcionando',
+        'version': '1.0.0',
+        'environment': os.getenv('FLASK_ENV', 'development'),
+        'database': {
+            'type': db_type,
+            'status': db_status
+        },
+        'features': [
+            'Autenticação',
+            'Gestão de Obras',
+            'Registros de Documentos',
+            'Pesquisa Avançada',
+            'Dashboard',
+            'Configurações',
+            'Importação em Lote',
+            'Reset de Senha'
+        ]
+    }, 200
+
+
 if __name__ == '__main__':
-    app = create_app()
-    port = int(os.environ.get('PORT', 5000))
+    # Debug: Mostrar todas as rotas registradas
+    with app.app_context():
+        logger.info("\n🔍 ROTAS REGISTRADAS:")
+        for rule in app.url_map.iter_rules():
+            methods = ', '.join(rule.methods - {'HEAD', 'OPTIONS'})
+            logger.info(f"  {methods:15} {rule.rule}")
 
-    logger.info(f"🚀 Iniciando servidor na porta {port}")
-    logger.info(f"🌍 Ambiente: {os.environ.get('FLASK_ENV', 'development')}")
-    logger.info(
-        f"🗄️ Banco: {'PostgreSQL' if os.environ.get('DATABASE_URL') else 'SQLite'}")
+    logger.info("🚀 Iniciando servidor GEDO CIMCOP...")
+    logger.info("📍 Acesse: http://localhost:5000")
+    logger.info("🔧 API Health Check: http://localhost:5000/api/health")
 
-    app.run(host='0.0.0.0', port=port, debug=False)
+    # Configurações de desenvolvimento
+    app.run(
+        host='0.0.0.0',
+        port=int(os.getenv('PORT', 5000)),
+        debug=os.getenv('FLASK_ENV') == 'development'
+    )
