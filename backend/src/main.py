@@ -19,8 +19,9 @@ from models.password_reset import PasswordResetToken
 from models.audit_log import AuditLog
 from config import config
 from flask_cors import CORS
-from flask import Flask, send_from_directory
-from sqlalchemy import text  # ← ÚNICA ADIÇÃO
+# ← CORREÇÃO: Adicionar request
+from flask import Flask, send_from_directory, request
+from sqlalchemy import text
 import os
 import sys
 import logging
@@ -49,24 +50,43 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
-    # Configurar CORS baseado no ambiente
+    # CORS mais permissivo
     if config_name == 'production':
-        allowed_origins = [app.config['FRONTEND_URL']]
+        # URLs permitidas em produção
+        allowed_origins = [
+            'https://gedo-cimcop.vercel.app',
+            'https://gedo-cimcop-frontend.vercel.app',
+            'https://*.vercel.app',
+        ]
+
+        # Adicionar URL do ambiente se existir
+        if app.config.get('FRONTEND_URL'):
+            allowed_origins.append(app.config['FRONTEND_URL'])
+
+        # Adicionar URLs adicionais se existirem
         if os.getenv('ADDITIONAL_ORIGINS'):
             allowed_origins.extend(os.getenv('ADDITIONAL_ORIGINS').split(','))
+
+        logger.info(f"🌐 CORS configurado para produção: {allowed_origins}")
 
         CORS(app,
              origins=allowed_origins,
              supports_credentials=True,
-             methods=["GET", "POST", "PUT", "DELETE"],
-             allow_headers=["Content-Type", "Authorization"])
+             methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+             allow_headers=["Content-Type",
+                            "Authorization", "X-Requested-With"],
+             expose_headers=["Content-Range", "X-Content-Range"])
     else:
         # Desenvolvimento - mais permissivo
+        logger.info("🌐 CORS configurado para desenvolvimento")
         CORS(app,
-             origins=["http://localhost:5173", "http://127.0.0.1:5173"],
+             origins=["http://localhost:5173",
+                      "http://127.0.0.1:5173", "http://localhost:3000"],
              supports_credentials=True,
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             allow_headers=["Content-Type", "Authorization"])
+             allow_headers=["Content-Type",
+                            "Authorization", "X-Requested-With"],
+             expose_headers=["Content-Range", "X-Content-Range"])
 
     # Inicializar extensões
     db.init_app(app)
@@ -84,16 +104,55 @@ def create_app(config_name=None):
     app.register_blueprint(importacao_bp, url_prefix='/api/importacao')
     app.register_blueprint(workflow_bp, url_prefix='/api/workflow')
 
-    # Middleware de segurança
+    # Middleware CORS manual para casos especiais
+    @app.before_request
+    def handle_preflight():
+        if request.method == "OPTIONS":
+            response = app.make_default_options_response()
+            headers = response.headers
+
+            # Headers CORS manuais
+            origin = request.headers.get('Origin')
+            if origin:
+                if config_name == 'production':
+                    allowed_origins = [
+                        'https://gedo-cimcop.vercel.app',
+                        'https://gedo-cimcop-frontend.vercel.app'
+                    ]
+                    if origin in allowed_origins or origin.endswith('.vercel.app'):
+                        headers['Access-Control-Allow-Origin'] = origin
+                else:
+                    headers['Access-Control-Allow-Origin'] = origin
+
+            headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+            headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With'
+            headers['Access-Control-Allow-Credentials'] = 'true'
+            headers['Access-Control-Max-Age'] = '86400'
+
+            return response
+
+    # ← CORREÇÃO: Middleware de segurança simplificado
     @app.after_request
     def security_headers(response):
         """Adiciona headers de segurança"""
+        # Headers CORS adicionais apenas se necessário
+        try:
+            # ← CORREÇÃO: request já importado
+            origin = request.headers.get('Origin')
+            if origin and config_name == 'production':
+                if origin.endswith('.vercel.app') or origin in ['https://gedo-cimcop.vercel.app']:
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+        except Exception as e:
+            # Se houver erro, apenas log e continue
+            logger.debug(f"Erro ao processar headers CORS: {e}")
+
+        # Headers de segurança apenas em produção
         if config_name == 'production':
             response.headers['X-Content-Type-Options'] = 'nosniff'
             response.headers['X-Frame-Options'] = 'DENY'
             response.headers['X-XSS-Protection'] = '1; mode=block'
-            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
-            response.headers['Content-Security-Policy'] = "default-src 'self'"
+
         return response
 
     # Handlers de erro
@@ -117,7 +176,7 @@ def create_app(config_name=None):
 def check_database_integrity():
     """Verificar integridade do banco de dados"""
     try:
-        db.session.execute(text('SELECT 1'))  # ← ÚNICA CORREÇÃO
+        db.session.execute(text('SELECT 1'))
         logger.info("✅ Tabela configuracoes_workflow: OK")
 
         PasswordResetToken.query.first()
@@ -229,6 +288,7 @@ def health_check():
         'message': 'GEDO CIMCOP API está funcionando',
         'version': '1.0.0',
         'environment': os.getenv('FLASK_ENV', 'development'),
+        'cors_enabled': True,
         'features': [
             'Autenticação',
             'Gestão de Obras',
