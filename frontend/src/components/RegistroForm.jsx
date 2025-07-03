@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI } from "../services/api" // ← CORREÇÃO: Usar APIs configuradas
+import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -52,20 +52,30 @@ export default function RegistroForm() {
 
       // Carregar tipos de registro
       console.log("📋 Carregando tipos de registro...")
-      const tiposRes = await tiposRegistroAPI.listar() // ← CORREÇÃO
+      const tiposRes = await tiposRegistroAPI.listar()
       console.log("✅ Tipos carregados:", tiposRes.data.tipos_registro)
+
+      // Debug: Verificar estrutura dos tipos
+      if (tiposRes.data.tipos_registro && tiposRes.data.tipos_registro.length > 0) {
+        console.log("🔍 Primeiro tipo:", tiposRes.data.tipos_registro[0])
+        console.log(
+          "🔍 IDs dos tipos:",
+          tiposRes.data.tipos_registro.map((t) => ({ id: t.id, nome: t.nome })),
+        )
+      }
+
       setTipos(tiposRes.data.tipos_registro || [])
 
       // Carregar dados do usuário
       console.log("👤 Carregando dados do usuário...")
-      const userRes = await authAPI.me() // ← CORREÇÃO
+      const userRes = await authAPI.me()
       const userData = userRes.data.user
       console.log("✅ Usuário carregado:", userData)
       setUser(userData)
 
       if (userData.role === "administrador") {
         console.log("🏗️ Carregando obras (admin)...")
-        const obrasRes = await obrasAPI.listar() // ← CORREÇÃO
+        const obrasRes = await obrasAPI.listar()
         console.log("✅ Obras carregadas:", obrasRes.data.obras)
         setObras(obrasRes.data.obras || [])
       } else {
@@ -74,7 +84,7 @@ export default function RegistroForm() {
         // Verificar status da obra
         if (userData.obra_id) {
           console.log("🔍 Verificando status da obra...")
-          const obraRes = await obrasAPI.obter(userData.obra_id) // ← CORREÇÃO
+          const obraRes = await obrasAPI.obter(userData.obra_id)
           if (obraRes.data.obra?.status === "Suspensa") {
             console.log("⚠️ Obra suspensa detectada")
             setObraSuspensa(true)
@@ -97,24 +107,53 @@ export default function RegistroForm() {
   }
 
   const handleSelectChange = (name, value) => {
-    setFormData({ ...formData, [name]: value })
+    console.log(`🔄 Alterando ${name} para:`, value)
+    setFormData((prev) => {
+      const newData = { ...prev, [name]: value }
+      console.log("📝 Novo formData:", newData)
+      return newData
+    })
+  }
+
+  // Função específica para tipo de registro
+  const handleTipoRegistroChange = (value) => {
+    console.log("🎯 Selecionando tipo de registro:", value)
+
+    const tipoSelecionado = tipos.find((t) => t.id.toString() === value)
+    console.log("🔍 Tipo encontrado:", tipoSelecionado)
+
+    if (tipoSelecionado) {
+      setFormData((prev) => ({
+        ...prev,
+        tipo_registro_id: value,
+        tipo_registro: tipoSelecionado.nome,
+      }))
+      console.log("✅ Tipo selecionado:", tipoSelecionado.nome)
+    } else {
+      console.log("❌ Tipo não encontrado para value:", value)
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (obraSuspensa) return
 
+    console.log("📤 Enviando formulário com dados:", formData)
+
     setLoading(true)
     setMensagem({ tipo: "", texto: "" })
 
     const data = new FormData()
     Object.entries(formData).forEach(([key, value]) => {
-      if (value) data.append(key, value)
+      if (value) {
+        data.append(key, value)
+        console.log(`📎 Adicionando ao FormData: ${key} = ${value}`)
+      }
     })
 
     try {
       console.log("💾 Criando registro...")
-      await registrosAPI.criar(data) // ← CORREÇÃO
+      await registrosAPI.criar(data)
       console.log("✅ Registro criado com sucesso!")
       setMensagem({ tipo: "success", texto: "Registro criado com sucesso!" })
 
@@ -146,7 +185,6 @@ export default function RegistroForm() {
 
   const handleImportacaoSuccess = () => {
     setMensagem({ tipo: "success", texto: "Importação concluída com sucesso!" })
-    // Recarregar dados se necessário
   }
 
   if (obraSuspensa) {
@@ -208,6 +246,17 @@ export default function RegistroForm() {
             </Alert>
           )}
 
+          {/* Debug Info */}
+          <div className="mb-4 p-3 bg-gray-100 rounded text-sm">
+            <strong>🔍 Debug Info:</strong>
+            <br />
+            Tipos carregados: {tipos.length}
+            <br />
+            Tipo selecionado ID: {formData.tipo_registro_id || "nenhum"}
+            <br />
+            Tipo selecionado nome: {formData.tipo_registro || "nenhum"}
+          </div>
+
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Obra Selection (Admin only) */}
             {user?.role === "administrador" && (
@@ -256,15 +305,7 @@ export default function RegistroForm() {
               {/* Tipo de Registro */}
               <div className="space-y-2">
                 <Label>Tipo de Registro *</Label>
-                <Select
-                  value={formData.tipo_registro_id}
-                  onValueChange={(value) => {
-                    const tipo = tipos.find((t) => t.id.toString() === value)
-                    handleSelectChange("tipo_registro_id", value)
-                    handleSelectChange("tipo_registro", tipo?.nome || "")
-                  }}
-                  required
-                >
+                <Select value={formData.tipo_registro_id} onValueChange={handleTipoRegistroChange} required>
                   <SelectTrigger>
                     <SelectValue placeholder={tipos.length === 0 ? "Nenhum tipo disponível" : "Selecione o tipo"} />
                   </SelectTrigger>
@@ -273,12 +314,15 @@ export default function RegistroForm() {
                       <div className="p-2 text-sm text-gray-500 text-center">Nenhum tipo de registro disponível</div>
                     ) : (
                       tipos
-                        .filter((tipo) => tipo.id && tipo.nome) // Filtrar tipos válidos
-                        .map((tipo) => (
-                          <SelectItem key={tipo.id} value={tipo.id.toString()}>
-                            {tipo.nome}
-                          </SelectItem>
-                        ))
+                        .filter((tipo) => tipo && tipo.id && tipo.nome) // Filtrar tipos válidos
+                        .map((tipo) => {
+                          console.log("🏷️ Renderizando tipo:", { id: tipo.id, nome: tipo.nome })
+                          return (
+                            <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                              {tipo.nome}
+                            </SelectItem>
+                          )
+                        })
                     )}
                   </SelectContent>
                 </Select>
@@ -360,7 +404,7 @@ export default function RegistroForm() {
               <Button type="button" variant="outline" onClick={() => window.history.back()}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading || !formData.tipo_registro_id}>
                 {loading ? (
                   <>
                     <Loader2 className="mr-2 h-4 w-4 animate-spin" />
