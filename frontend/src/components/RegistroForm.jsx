@@ -48,51 +48,28 @@ export default function RegistroForm() {
 
   const loadInitialData = async () => {
     try {
-      console.log("🔄 Carregando dados iniciais...")
-
-      // Carregar tipos de registro
-      console.log("📋 Carregando tipos de registro...")
       const tiposRes = await tiposRegistroAPI.listar()
-      console.log("✅ Tipos carregados:", tiposRes.data.tipos_registro)
-
-      // Debug: Verificar estrutura dos tipos
-      if (tiposRes.data.tipos_registro && tiposRes.data.tipos_registro.length > 0) {
-        console.log("🔍 Primeiro tipo:", tiposRes.data.tipos_registro[0])
-        console.log(
-          "🔍 IDs dos tipos:",
-          tiposRes.data.tipos_registro.map((t) => ({ id: t.id, nome: t.nome })),
-        )
-      }
-
       setTipos(tiposRes.data.tipos_registro || [])
 
-      // Carregar dados do usuário
-      console.log("👤 Carregando dados do usuário...")
       const userRes = await authAPI.me()
       const userData = userRes.data.user
-      console.log("✅ Usuário carregado:", userData)
       setUser(userData)
 
       if (userData.role === "administrador") {
-        console.log("🏗️ Carregando obras (admin)...")
         const obrasRes = await obrasAPI.listar()
-        console.log("✅ Obras carregadas:", obrasRes.data.obras)
         setObras(obrasRes.data.obras || [])
       } else {
         setFormData((prev) => ({ ...prev, obra_id: userData.obra_id }))
 
-        // Verificar status da obra
         if (userData.obra_id) {
-          console.log("🔍 Verificando status da obra...")
           const obraRes = await obrasAPI.obter(userData.obra_id)
           if (obraRes.data.obra?.status === "Suspensa") {
-            console.log("⚠️ Obra suspensa detectada")
             setObraSuspensa(true)
           }
         }
       }
     } catch (error) {
-      console.error("❌ Erro ao carregar dados iniciais:", error)
+      console.error("Erro ao carregar dados iniciais:", error)
       setMensagem({ tipo: "error", texto: "Erro ao carregar dados iniciais." })
     }
   }
@@ -107,20 +84,13 @@ export default function RegistroForm() {
   }
 
   const handleSelectChange = (name, value) => {
-    console.log(`🔄 Alterando ${name} para:`, value)
     setFormData((prev) => {
-      const newData = { ...prev, [name]: value }
-      console.log("📝 Novo formData:", newData)
-      return newData
+      return { ...prev, [name]: value }
     })
   }
 
-  // Função específica para tipo de registro
   const handleTipoRegistroChange = (value) => {
-    console.log("🎯 Selecionando tipo de registro:", value)
-
     const tipoSelecionado = tipos.find((t) => t.id.toString() === value)
-    console.log("🔍 Tipo encontrado:", tipoSelecionado)
 
     if (tipoSelecionado) {
       setFormData((prev) => ({
@@ -128,17 +98,12 @@ export default function RegistroForm() {
         tipo_registro_id: value,
         tipo_registro: tipoSelecionado.nome,
       }))
-      console.log("✅ Tipo selecionado:", tipoSelecionado.nome)
-    } else {
-      console.log("❌ Tipo não encontrado para value:", value)
     }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
     if (obraSuspensa) return
-
-    console.log("📤 Enviando formulário com dados:", formData)
 
     setLoading(true)
     setMensagem({ tipo: "", texto: "" })
@@ -147,14 +112,11 @@ export default function RegistroForm() {
     Object.entries(formData).forEach(([key, value]) => {
       if (value) {
         data.append(key, value)
-        console.log(`📎 Adicionando ao FormData: ${key} = ${value}`)
       }
     })
 
     try {
-      console.log("💾 Criando registro...")
       await registrosAPI.criar(data)
-      console.log("✅ Registro criado com sucesso!")
       setMensagem({ tipo: "success", texto: "Registro criado com sucesso!" })
 
       // Reset form
@@ -173,7 +135,7 @@ export default function RegistroForm() {
       const fileInput = document.querySelector('input[type="file"]')
       if (fileInput) fileInput.value = ""
     } catch (err) {
-      console.error("❌ Erro ao criar registro:", err)
+      console.error("Erro ao criar registro:", err)
       setMensagem({
         tipo: "error",
         texto: err.response?.data?.message || "Erro ao criar registro.",
@@ -246,17 +208,6 @@ export default function RegistroForm() {
             </Alert>
           )}
 
-          {/* Debug Info */}
-          <div className="mb-4 p-3 bg-gray-100 rounded text-sm">
-            <strong>🔍 Debug Info:</strong>
-            <br />
-            Tipos carregados: {tipos.length}
-            <br />
-            Tipo selecionado ID: {formData.tipo_registro_id || "nenhum"}
-            <br />
-            Tipo selecionado nome: {formData.tipo_registro || "nenhum"}
-          </div>
-
           <form onSubmit={handleSubmit} className="space-y-6">
             {/* Obra Selection (Admin only) */}
             {user?.role === "administrador" && (
@@ -316,7 +267,6 @@ export default function RegistroForm() {
                       tipos
                         .filter((tipo) => tipo && tipo.id && tipo.nome) // Filtrar tipos válidos
                         .map((tipo) => {
-                          console.log("🏷️ Renderizando tipo:", { id: tipo.id, nome: tipo.nome })
                           return (
                             <SelectItem key={tipo.id} value={tipo.id.toString()}>
                               {tipo.nome}
