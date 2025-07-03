@@ -52,8 +52,8 @@ export const authAPI = {
   logout: () => api.post("/auth/logout"),
   forgotPassword: (email) => api.post("/forgot-password", { email }),
   resetPassword: (token, newPassword) => api.post("/reset-password", { token, new_password: newPassword }),
-  changePassword: (data) => api.post("/auth/change-password", data), // ← CORREÇÃO: Aceitar objeto
-  getPasswordStatus: () => api.get("/auth/password-status"), // ← ADIÇÃO para TrocarSenha
+  changePassword: (data) => api.post("/auth/change-password", data),
+  getPasswordStatus: () => api.get("/auth/password-status"),
 }
 
 // APIs do Dashboard
@@ -72,7 +72,14 @@ export const pesquisaAPI = {
 // APIs de Registros
 export const registrosAPI = {
   listar: (params) => api.get("/registros/", { params }),
-  criar: (data) => api.post("/registros/", data), // ← CORREÇÃO: Aceitar FormData
+  criar: (data) => {
+    // ← CORREÇÃO: Configurar headers para FormData
+    return api.post("/registros/", data, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    })
+  },
   obter: (id) => api.get(`/registros/${id}`),
   atualizar: (id, data) => api.put(`/registros/${id}`, data),
   deletar: (id) => api.delete(`/registros/${id}`),
@@ -102,8 +109,8 @@ export const usuariosAPI = {
 
 // APIs de Tipos de Registro
 export const tiposRegistroAPI = {
-  listar: () => api.get("/tipos-registro/"), // ← CORREÇÃO: Método correto
-  listarTodos: () => api.get("/tipos-registro/all"), // ← ADIÇÃO: Para admin ver todos
+  listar: () => api.get("/tipos-registro/"),
+  listarTodos: () => api.get("/tipos-registro/all"),
   criar: (data) => api.post("/tipos-registro/", data),
   obter: (id) => api.get(`/tipos-registro/${id}`),
   atualizar: (id, data) => api.put(`/tipos-registro/${id}`, data),
@@ -112,10 +119,10 @@ export const tiposRegistroAPI = {
 
 // APIs de Configurações
 export const configuracoesAPI = {
-  get: () => api.get("/configuracoes/"), // ← CORREÇÃO: Método get
-  save: (data) => api.post("/configuracoes/", data), // ← CORREÇÃO: Método save
-  backup: () => api.post("/configuracoes/backup"), // ← ADIÇÃO
-  reset: () => api.post("/configuracoes/reset"), // ← ADIÇÃO
+  get: () => api.get("/configuracoes/"),
+  save: (data) => api.post("/configuracoes/", data),
+  backup: () => api.post("/configuracoes/backup"),
+  reset: () => api.post("/configuracoes/reset"),
 }
 
 // APIs de Workflow

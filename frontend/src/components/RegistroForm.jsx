@@ -59,7 +59,7 @@ export default function RegistroForm() {
         const obrasRes = await obrasAPI.listar()
         setObras(obrasRes.data.obras || [])
       } else {
-        setFormData((prev) => ({ ...prev, obra_id: userData.obra_id }))
+        setFormData((prev) => ({ ...prev, obra_id: userData.obra_id?.toString() || "" }))
 
         if (userData.obra_id) {
           const obraRes = await obrasAPI.obter(userData.obra_id)
@@ -105,18 +105,38 @@ export default function RegistroForm() {
     e.preventDefault()
     if (obraSuspensa) return
 
+    console.log("📤 Dados do formulário antes do envio:", formData)
+
     setLoading(true)
     setMensagem({ tipo: "", texto: "" })
 
+    // ← CORREÇÃO: Construir FormData corretamente
     const data = new FormData()
-    Object.entries(formData).forEach(([key, value]) => {
-      if (value) {
-        data.append(key, value)
-      }
-    })
+
+    // Campos obrigatórios
+    if (formData.titulo) data.append("titulo", formData.titulo)
+    if (formData.tipo_registro) data.append("tipo_registro", formData.tipo_registro)
+    if (formData.tipo_registro_id) data.append("tipo_registro_id", formData.tipo_registro_id)
+    if (formData.data_registro) data.append("data_registro", formData.data_registro)
+    if (formData.codigo_numero) data.append("codigo_numero", formData.codigo_numero)
+    if (formData.descricao) data.append("descricao", formData.descricao)
+    if (formData.obra_id) data.append("obra_id", formData.obra_id)
+
+    // Anexo (opcional)
+    if (formData.anexo) {
+      data.append("anexo", formData.anexo)
+    }
+
+    // Debug: Mostrar o que está sendo enviado
+    console.log("📎 Dados sendo enviados:")
+    for (const [key, value] of data.entries()) {
+      console.log(`  ${key}: ${value}`)
+    }
 
     try {
-      await registrosAPI.criar(data)
+      console.log("💾 Criando registro...")
+      const response = await registrosAPI.criar(data)
+      console.log("✅ Resposta do servidor:", response.data)
       setMensagem({ tipo: "success", texto: "Registro criado com sucesso!" })
 
       // Reset form
@@ -128,14 +148,15 @@ export default function RegistroForm() {
         codigo_numero: "",
         descricao: "",
         anexo: null,
-        obra_id: user?.role === "administrador" ? "" : user?.obra_id,
+        obra_id: user?.role === "administrador" ? "" : user?.obra_id?.toString() || "",
       })
 
       // Reset file input
       const fileInput = document.querySelector('input[type="file"]')
       if (fileInput) fileInput.value = ""
     } catch (err) {
-      console.error("Erro ao criar registro:", err)
+      console.error("❌ Erro completo:", err)
+      console.error("❌ Resposta do erro:", err.response?.data)
       setMensagem({
         tipo: "error",
         texto: err.response?.data?.message || "Erro ao criar registro.",
@@ -265,7 +286,7 @@ export default function RegistroForm() {
                       <div className="p-2 text-sm text-gray-500 text-center">Nenhum tipo de registro disponível</div>
                     ) : (
                       tipos
-                        .filter((tipo) => tipo && tipo.id && tipo.nome) // Filtrar tipos válidos
+                        .filter((tipo) => tipo && tipo.id && tipo.nome)
                         .map((tipo) => {
                           return (
                             <SelectItem key={tipo.id} value={tipo.id.toString()}>
