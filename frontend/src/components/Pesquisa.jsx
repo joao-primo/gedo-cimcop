@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { pesquisaAPI } from "../services/api"
+import { pesquisaAPI, registrosAPI } from "../services/api" // ← ADICIONADO: registrosAPI
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,17 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { Search, Download, RefreshCw, FileText, User, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react"
+import {
+  Search,
+  Download,
+  RefreshCw,
+  FileText,
+  User,
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  Trash2,
+} from "lucide-react" // ← ADICIONADO: Trash2
 
 const formatDate = (dateStr) => {
   if (!dateStr) return "—"
@@ -46,6 +56,9 @@ const Pesquisa = () => {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
+  // ← ADICIONADO: Estados para controle de exclusão
+  const [deletingId, setDeletingId] = useState(null)
+  const [successMessage, setSuccessMessage] = useState("")
 
   useEffect(() => {
     console.log("Componente Pesquisa montado, carregando filtros...")
@@ -158,6 +171,77 @@ const Pesquisa = () => {
     }
   }
 
+  // ← NOVA FUNÇÃO: Verificar se usuário pode excluir registro
+  const canDeleteRecord = (registro) => {
+    if (!user) return false
+
+    // Admin pode excluir qualquer registro
+    if (user.role === "administrador") return true
+
+    // Autor pode excluir seus próprios registros
+    if (registro.autor_nome === user.username) return true
+
+    return false
+  }
+
+  // ← NOVA FUNÇÃO: Excluir registro
+  const handleDelete = async (registro) => {
+    // Verificar permissões
+    if (!canDeleteRecord(registro)) {
+      setError("Você não tem permissão para excluir este registro.")
+      return
+    }
+
+    // Confirmação dupla
+    const confirmMessage = `Tem certeza que deseja excluir o registro "${registro.titulo}"?\n\nEsta ação não pode ser desfeita!`
+
+    if (!window.confirm(confirmMessage)) {
+      return
+    }
+
+    // Segunda confirmação para registros com anexo
+    if (registro.anexo_url) {
+      const confirmWithAttachment = window.confirm(
+        `ATENÇÃO: Este registro possui um anexo que também será excluído permanentemente.\n\nDeseja realmente continuar?`,
+      )
+      if (!confirmWithAttachment) {
+        return
+      }
+    }
+
+    try {
+      setDeletingId(registro.id)
+      setError("")
+      setSuccessMessage("")
+
+      console.log("Excluindo registro:", registro.id)
+
+      await registrosAPI.deletar(registro.id)
+
+      setSuccessMessage(`Registro "${registro.titulo}" excluído com sucesso!`)
+
+      // Atualizar lista de registros
+      fetchRegistros(pagination.page)
+
+      // Limpar mensagem de sucesso após 5 segundos
+      setTimeout(() => {
+        setSuccessMessage("")
+      }, 5000)
+    } catch (err) {
+      console.error("Erro ao excluir registro:", err)
+
+      if (err.response?.status === 403) {
+        setError("Você não tem permissão para excluir este registro.")
+      } else if (err.response?.status === 404) {
+        setError("Registro não encontrado.")
+      } else {
+        setError(err.response?.data?.message || "Erro ao excluir registro. Tente novamente.")
+      }
+    } finally {
+      setDeletingId(null)
+    }
+  }
+
   const handlePageChange = (newPage) => {
     console.log("Mudando para página:", newPage)
     fetchRegistros(newPage)
@@ -188,6 +272,14 @@ const Pesquisa = () => {
             Atualizar Filtros
           </Button>
         </div>
+
+        {/* ← ADICIONADO: Mensagem de sucesso */}
+        {successMessage && (
+          <Alert className="mb-6 border-green-200 bg-green-50">
+            <FileText className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
+          </Alert>
+        )}
 
         {error && (
           <Alert className="mb-6 border-red-200 bg-red-50">
@@ -320,7 +412,7 @@ const Pesquisa = () => {
                       <TableHead>Título</TableHead>
                       <TableHead>Autor</TableHead>
                       <TableHead className="w-80">Descrição</TableHead>
-                      <TableHead className="w-24 text-center">Anexo</TableHead>
+                      <TableHead className="w-32 text-center">Ações</TableHead> {/* ← ALTERADO: "Anexo" para "Ações" */}
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -358,19 +450,41 @@ const Pesquisa = () => {
                               {registro.descricao || "—"}
                             </div>
                           </TableCell>
+                          {/* ← ALTERADO: Coluna de ações com botões de download e excluir */}
                           <TableCell className="text-center">
-                            {registro.anexo_url ? (
-                              <Button
-                                onClick={() => handleDownload(registro.anexo_url, registro.nome_arquivo_original)}
-                                size="sm"
-                                variant="outline"
-                              >
-                                <Download className="w-3 h-3 mr-1" />
-                                Baixar
-                              </Button>
-                            ) : (
-                              <span className="text-gray-400 text-xs">—</span>
-                            )}
+                            <div className="flex items-center justify-center gap-2">
+                              {/* Botão de Download */}
+                              {registro.anexo_url ? (
+                                <Button
+                                  onClick={() => handleDownload(registro.anexo_url, registro.nome_arquivo_original)}
+                                  size="sm"
+                                  variant="outline"
+                                  title="Baixar anexo"
+                                >
+                                  <Download className="w-3 h-3" />
+                                </Button>
+                              ) : (
+                                <div className="w-8 h-8"></div> // Espaço vazio para manter alinhamento
+                              )}
+
+                              {/* Botão de Excluir */}
+                              {canDeleteRecord(registro) && (
+                                <Button
+                                  onClick={() => handleDelete(registro)}
+                                  size="sm"
+                                  variant="outline"
+                                  disabled={deletingId === registro.id}
+                                  className="text-red-600 hover:text-red-700 hover:border-red-300 hover:bg-red-50"
+                                  title={`Excluir registro "${registro.titulo}"`}
+                                >
+                                  {deletingId === registro.id ? (
+                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                  ) : (
+                                    <Trash2 className="w-3 h-3" />
+                                  )}
+                                </Button>
+                              )}
+                            </div>
                           </TableCell>
                         </TableRow>
                       ))

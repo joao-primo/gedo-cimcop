@@ -15,7 +15,8 @@ registros_bp = Blueprint('registros', __name__)
 registros_bp.strict_slashes = False
 
 # Configurações para upload de arquivos - MANTIDO para compatibilidade
-UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
+UPLOAD_FOLDER = os.path.join(os.path.dirname(
+    os.path.dirname(__file__)), 'uploads')
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg',
                       'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx'}
 
@@ -52,7 +53,7 @@ def save_file_blob(file):
     """NOVO: Salva arquivo no Vercel Blob"""
     if not file or not allowed_file(file.filename):
         return None
-        
+
     try:
         blob_data = blob_service.upload_file(file)
         if blob_data:
@@ -65,7 +66,7 @@ def save_file_blob(file):
             }
     except Exception as e:
         print(f"❌ Erro no upload para Blob: {str(e)}")
-        
+
     return None
 
 
@@ -73,13 +74,13 @@ def save_file(file):
     """Função principal: tenta Blob primeiro, fallback para local"""
     if not file or not allowed_file(file.filename):
         return None
-    
+
     # Tentar Vercel Blob primeiro
     blob_result = save_file_blob(file)
     if blob_result:
         print(f"✅ Arquivo salvo no Vercel Blob: {blob_result['blob_url']}")
         return blob_result
-    
+
     # Fallback para sistema local
     print("⚠️ Fallback para sistema local")
     return save_file_legacy(file)
@@ -88,7 +89,8 @@ def save_file(file):
 def validate_registro_data(data, files):
     """Valida dados do registro"""
     errors = []
-    required_fields = ['titulo', 'tipo_registro', 'descricao', 'tipo_registro_id', 'data_registro']
+    required_fields = ['titulo', 'tipo_registro',
+                       'descricao', 'tipo_registro_id', 'data_registro']
     for field in required_fields:
         if not data.get(field):
             errors.append(f'Campo {field} é obrigatório')
@@ -98,7 +100,7 @@ def validate_registro_data(data, files):
         file.seek(0, 2)
         size = file.tell()
         file.seek(0)
-        
+
         if size > 16 * 1024 * 1024:
             errors.append('Arquivo muito grande (máximo 16MB)')
         if not allowed_file(file.filename):
@@ -107,61 +109,149 @@ def validate_registro_data(data, files):
     return errors
 
 
+# ← NOVO: Endpoint de debug
+@registros_bp.route('/<int:registro_id>/debug', methods=['GET'])
+@token_required
+def debug_registro(current_user, registro_id):
+    """Debug de registro para troubleshooting"""
+    try:
+        print(f"🔍 DEBUG: Buscando registro ID {registro_id}")
+
+        registro = Registro.query.get(registro_id)
+        if not registro:
+            print(f"❌ DEBUG: Registro {registro_id} não encontrado")
+            return jsonify({
+                'message': f'Registro {registro_id} não encontrado',
+                'exists': False
+            }), 404
+
+        print(f"✅ DEBUG: Registro {registro_id} encontrado")
+        print(f"   - Título: {registro.titulo}")
+        print(f"   - Tem blob_url: {bool(registro.blob_url)}")
+        print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
+        print(f"   - Blob URL: {registro.blob_url}")
+        print(f"   - Caminho anexo: {registro.caminho_anexo}")
+
+        return jsonify({
+            'message': 'Registro encontrado',
+            'exists': True,
+            'registro': {
+                'id': registro.id,
+                'titulo': registro.titulo,
+                'tem_blob_url': bool(registro.blob_url),
+                'tem_caminho_anexo': bool(registro.caminho_anexo),
+                'blob_url': registro.blob_url,
+                'caminho_anexo': registro.caminho_anexo,
+                'nome_arquivo_original': registro.nome_arquivo_original,
+                'tem_anexo': bool(registro.blob_url or registro.caminho_anexo)
+            }
+        }), 200
+
+    except Exception as e:
+        print(f"❌ DEBUG: Erro ao buscar registro {registro_id}: {str(e)}")
+        return jsonify({
+            'message': f'Erro interno: {str(e)}',
+            'exists': False
+        }), 500
+
+
 @registros_bp.route('/<int:registro_id>/download', methods=['GET'])
 @token_required
 @obra_access_required
 def download_anexo(current_user, registro_id):
     try:
+        print(f"🔽 DOWNLOAD: Iniciando download do registro {registro_id}")
+        print(f"   - Usuário: {current_user.username} (ID: {current_user.id})")
+
         registro = Registro.query.get(registro_id)
         if not registro:
+            print(f"❌ DOWNLOAD: Registro {registro_id} não encontrado")
             return jsonify({'message': 'Registro não encontrado'}), 404
 
+        print(f"✅ DOWNLOAD: Registro {registro_id} encontrado")
+        print(f"   - Título: {registro.titulo}")
+        print(f"   - Obra ID: {registro.obra_id}")
+        print(f"   - Usuário obra ID: {current_user.obra_id}")
+
+        # Verificar permissões
         if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
+            print(
+                f"❌ DOWNLOAD: Acesso negado - usuário obra {current_user.obra_id} != registro obra {registro.obra_id}")
             return jsonify({'message': 'Acesso negado a este registro'}), 403
+
+        print(f"✅ DOWNLOAD: Permissões OK")
+        print(f"   - Tem blob_url: {bool(registro.blob_url)}")
+        print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
 
         # ATUALIZADO: Fazer proxy do Vercel Blob
         if registro.blob_url:
             try:
-                print(f"🔗 Fazendo proxy do Vercel Blob: {registro.blob_url}")
-                
+                print(f"🔗 DOWNLOAD: Fazendo proxy do Vercel Blob")
+                print(f"   - URL: {registro.blob_url}")
+
                 # Fazer download do Vercel Blob
-                response = requests.get(registro.blob_url, stream=True)
+                print("📡 DOWNLOAD: Fazendo requisição para Vercel Blob...")
+                response = requests.get(
+                    registro.blob_url, stream=True, timeout=30)
                 response.raise_for_status()
-                
+
+                print(
+                    f"✅ DOWNLOAD: Resposta do Vercel Blob: {response.status_code}")
+                print(
+                    f"   - Content-Type: {response.headers.get('content-type')}")
+                print(
+                    f"   - Content-Length: {response.headers.get('content-length')}")
+
                 # Determinar tipo de conteúdo
-                content_type = response.headers.get('content-type', 'application/octet-stream')
-                
+                content_type = response.headers.get(
+                    'content-type', 'application/octet-stream')
+
                 # Determinar nome do arquivo
                 filename = registro.nome_arquivo_original or f'anexo_{registro_id}'
-                
+                print(f"📎 DOWNLOAD: Nome do arquivo: {filename}")
+
                 # Criar resposta streaming
                 def generate():
-                    for chunk in response.iter_content(chunk_size=8192):
-                        if chunk:
-                            yield chunk
-                
+                    try:
+                        for chunk in response.iter_content(chunk_size=8192):
+                            if chunk:
+                                yield chunk
+                    except Exception as e:
+                        print(f"❌ DOWNLOAD: Erro no streaming: {str(e)}")
+                        raise
+
+                print("🚀 DOWNLOAD: Iniciando streaming do arquivo...")
+
                 # Retornar arquivo como stream
                 return Response(
                     generate(),
                     headers={
                         'Content-Type': content_type,
                         'Content-Disposition': f'attachment; filename="{filename}"',
-                        'Content-Length': response.headers.get('content-length', '')
+                        'Content-Length': response.headers.get('content-length', ''),
+                        'Cache-Control': 'no-cache'
                     }
                 )
-                
+
             except requests.RequestException as e:
-                print(f"❌ Erro ao baixar do Vercel Blob: {str(e)}")
-                return jsonify({'message': 'Erro ao acessar arquivo no storage'}), 500
-        
+                print(f"❌ DOWNLOAD: Erro ao baixar do Vercel Blob: {str(e)}")
+                return jsonify({'message': f'Erro ao acessar arquivo no storage: {str(e)}'}), 500
+            except Exception as e:
+                print(f"❌ DOWNLOAD: Erro geral no Blob: {str(e)}")
+                return jsonify({'message': f'Erro interno no download: {str(e)}'}), 500
+
         # Fallback para sistema antigo
         if not registro.caminho_anexo:
+            print("❌ DOWNLOAD: Registro não possui anexo")
             return jsonify({'message': 'Este registro não possui anexo'}), 404
 
-        print(f"📁 Usando sistema local: {registro.caminho_anexo}")
+        print(f"📁 DOWNLOAD: Usando sistema local: {registro.caminho_anexo}")
         if not os.path.exists(registro.caminho_anexo):
+            print(
+                f"❌ DOWNLOAD: Arquivo local não encontrado: {registro.caminho_anexo}")
             return jsonify({'message': 'Arquivo não encontrado no servidor'}), 404
 
+        print("✅ DOWNLOAD: Enviando arquivo local")
         return send_file(
             registro.caminho_anexo,
             as_attachment=True,
@@ -170,7 +260,9 @@ def download_anexo(current_user, registro_id):
         )
 
     except Exception as e:
-        print(f"❌ Erro no download: {str(e)}")
+        print(f"❌ DOWNLOAD: Erro geral: {str(e)}")
+        import traceback
+        traceback.print_exc()
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
@@ -211,7 +303,8 @@ def list_registros(current_user):
                 return jsonify({'message': 'Formato de data_fim inválido (use YYYY-MM-DD)'}), 400
 
         query = query.order_by(Registro.created_at.desc())
-        registros_paginados = query.paginate(page=page, per_page=per_page, error_out=False)
+        registros_paginados = query.paginate(
+            page=page, per_page=per_page, error_out=False)
 
         return jsonify({
             'registros': [registro.to_dict() for registro in registros_paginados.items],
@@ -313,6 +406,10 @@ def create_registro(current_user):
         db.session.add(registro)
         db.session.commit()
 
+        print(f"✅ Registro criado: ID {registro.id}")
+        print(f"   - Tem blob_url: {bool(registro.blob_url)}")
+        print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
+
         try:
             from services.email_service import processar_workflow_registro
             processar_workflow_registro(registro, 'criacao')
@@ -354,11 +451,13 @@ def update_registro(current_user, registro_id):
             registro.codigo_numero = request.form['codigo_numero']
         if 'data_registro' in request.form:
             try:
-                registro.data_registro = datetime.strptime(request.form['data_registro'], '%Y-%m-%d')
+                registro.data_registro = datetime.strptime(
+                    request.form['data_registro'], '%Y-%m-%d')
             except ValueError:
                 return jsonify({'message': 'Formato de data_registro inválido (use YYYY-MM-DD)'}), 400
         if 'tipo_registro_id' in request.form:
-            registro.tipo_registro_id = request.form.get('tipo_registro_id', type=int)
+            registro.tipo_registro_id = request.form.get(
+                'tipo_registro_id', type=int)
 
         # ATUALIZADO: Processar novo arquivo
         if 'anexo' in request.files:
