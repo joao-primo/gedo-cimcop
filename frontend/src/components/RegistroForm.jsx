@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import axios from "../services/api"
+import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI } from "../services/api" // ← CORREÇÃO: Usar APIs configuradas
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -48,28 +48,41 @@ export default function RegistroForm() {
 
   const loadInitialData = async () => {
     try {
+      console.log("🔄 Carregando dados iniciais...")
+
       // Carregar tipos de registro
-      const tiposRes = await axios.get("/tipos-registro/")
+      console.log("📋 Carregando tipos de registro...")
+      const tiposRes = await tiposRegistroAPI.listar() // ← CORREÇÃO
+      console.log("✅ Tipos carregados:", tiposRes.data.tipos_registro)
       setTipos(tiposRes.data.tipos_registro || [])
 
       // Carregar dados do usuário
-      const userRes = await axios.get("/auth/me")
+      console.log("👤 Carregando dados do usuário...")
+      const userRes = await authAPI.me() // ← CORREÇÃO
       const userData = userRes.data.user
+      console.log("✅ Usuário carregado:", userData)
       setUser(userData)
 
       if (userData.role === "administrador") {
-        const obrasRes = await axios.get("/obras/")
+        console.log("🏗️ Carregando obras (admin)...")
+        const obrasRes = await obrasAPI.listar() // ← CORREÇÃO
+        console.log("✅ Obras carregadas:", obrasRes.data.obras)
         setObras(obrasRes.data.obras || [])
       } else {
         setFormData((prev) => ({ ...prev, obra_id: userData.obra_id }))
 
         // Verificar status da obra
-        const obraRes = await axios.get(`/obras/${userData.obra_id}`)
-        if (obraRes.data.obra?.status === "Suspensa") {
-          setObraSuspensa(true)
+        if (userData.obra_id) {
+          console.log("🔍 Verificando status da obra...")
+          const obraRes = await obrasAPI.obter(userData.obra_id) // ← CORREÇÃO
+          if (obraRes.data.obra?.status === "Suspensa") {
+            console.log("⚠️ Obra suspensa detectada")
+            setObraSuspensa(true)
+          }
         }
       }
     } catch (error) {
+      console.error("❌ Erro ao carregar dados iniciais:", error)
       setMensagem({ tipo: "error", texto: "Erro ao carregar dados iniciais." })
     }
   }
@@ -100,7 +113,9 @@ export default function RegistroForm() {
     })
 
     try {
-      await axios.post("/registros/", data)
+      console.log("💾 Criando registro...")
+      await registrosAPI.criar(data) // ← CORREÇÃO
+      console.log("✅ Registro criado com sucesso!")
       setMensagem({ tipo: "success", texto: "Registro criado com sucesso!" })
 
       // Reset form
@@ -119,7 +134,7 @@ export default function RegistroForm() {
       const fileInput = document.querySelector('input[type="file"]')
       if (fileInput) fileInput.value = ""
     } catch (err) {
-      console.error(err)
+      console.error("❌ Erro ao criar registro:", err)
       setMensagem({
         tipo: "error",
         texto: err.response?.data?.message || "Erro ao criar registro.",
@@ -254,13 +269,20 @@ export default function RegistroForm() {
                     <SelectValue placeholder="Selecione o tipo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {tipos.map((tipo) => (
-                      <SelectItem key={tipo.id} value={tipo.id.toString()}>
-                        {tipo.nome}
+                    {tipos.length === 0 ? (
+                      <SelectItem value="" disabled>
+                        Nenhum tipo disponível
                       </SelectItem>
-                    ))}
+                    ) : (
+                      tipos.map((tipo) => (
+                        <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                          {tipo.nome}
+                        </SelectItem>
+                      ))
+                    )}
                   </SelectContent>
                 </Select>
+                {tipos.length === 0 && <p className="text-sm text-red-600">⚠️ Nenhum tipo de registro encontrado</p>}
               </div>
 
               {/* Data do Registro */}
