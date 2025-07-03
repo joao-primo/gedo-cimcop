@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { pesquisaAPI, registrosAPI } from "../services/api" // ← ADICIONADO: registrosAPI
+import { pesquisaAPI, registrosAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -21,7 +21,8 @@ import {
   ChevronLeft,
   ChevronRight,
   Trash2,
-} from "lucide-react" // ← ADICIONADO: Trash2
+  CheckCircle,
+} from "lucide-react"
 
 const formatDate = (dateStr) => {
   if (!dateStr) return "—"
@@ -56,8 +57,8 @@ const Pesquisa = () => {
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState("")
-  // ← ADICIONADO: Estados para controle de exclusão
   const [deletingId, setDeletingId] = useState(null)
+  const [downloadingId, setDownloadingId] = useState(null) // ← ADICIONADO: Estado para download
   const [successMessage, setSuccessMessage] = useState("")
 
   useEffect(() => {
@@ -142,36 +143,30 @@ const Pesquisa = () => {
     fetchRegistros(1)
   }
 
-  const handleDownload = async (anexoUrl, nomeArquivo) => {
+  // ← CORRIGIDO: Usar a API correta para download
+  const handleDownload = async (registroId, nomeArquivo) => {
     try {
-      console.log("Baixando arquivo:", anexoUrl)
+      setDownloadingId(registroId)
+      setError("")
 
-      const response = await fetch(anexoUrl, {
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-      })
+      console.log("Baixando arquivo do registro:", registroId)
 
-      if (!response.ok) {
-        throw new Error("Erro ao baixar arquivo")
-      }
+      // Usar a função da API que já está configurada corretamente
+      const result = await registrosAPI.downloadAnexo(registroId)
 
-      const blob = await response.blob()
-      const url = window.URL.createObjectURL(blob)
-      const link = document.createElement("a")
-      link.href = url
-      link.setAttribute("download", nomeArquivo || "anexo")
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
+      console.log("Download concluído:", result.filename)
+
+      // Mostrar mensagem de sucesso temporária
+      setSuccessMessage(`Arquivo "${result.filename}" baixado com sucesso!`)
+      setTimeout(() => setSuccessMessage(""), 3000)
     } catch (err) {
       console.error("Erro ao baixar arquivo:", err)
-      setError("Erro ao baixar o arquivo. Tente novamente.")
+      setError(err.message || "Erro ao baixar o arquivo. Tente novamente.")
+    } finally {
+      setDownloadingId(null)
     }
   }
 
-  // ← NOVA FUNÇÃO: Verificar se usuário pode excluir registro
   const canDeleteRecord = (registro) => {
     if (!user) return false
 
@@ -184,7 +179,6 @@ const Pesquisa = () => {
     return false
   }
 
-  // ← NOVA FUNÇÃO: Excluir registro
   const handleDelete = async (registro) => {
     // Verificar permissões
     if (!canDeleteRecord(registro)) {
@@ -273,10 +267,9 @@ const Pesquisa = () => {
           </Button>
         </div>
 
-        {/* ← ADICIONADO: Mensagem de sucesso */}
         {successMessage && (
           <Alert className="mb-6 border-green-200 bg-green-50">
-            <FileText className="h-4 w-4 text-green-600" />
+            <CheckCircle className="h-4 w-4 text-green-600" />
             <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
           </Alert>
         )}
@@ -412,7 +405,7 @@ const Pesquisa = () => {
                       <TableHead>Título</TableHead>
                       <TableHead>Autor</TableHead>
                       <TableHead className="w-80">Descrição</TableHead>
-                      <TableHead className="w-32 text-center">Ações</TableHead> {/* ← ALTERADO: "Anexo" para "Ações" */}
+                      <TableHead className="w-40 text-center">Ações</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -450,37 +443,43 @@ const Pesquisa = () => {
                               {registro.descricao || "—"}
                             </div>
                           </TableCell>
-                          {/* ← ALTERADO: Coluna de ações com botões de download e excluir */}
+                          {/* ← MELHORADO: Layout dos botões mais bonito */}
                           <TableCell className="text-center">
-                            <div className="flex items-center justify-center gap-2">
-                              {/* Botão de Download */}
+                            <div className="flex items-center justify-center gap-1">
+                              {/* Botão de Download - Melhorado */}
                               {registro.anexo_url ? (
                                 <Button
-                                  onClick={() => handleDownload(registro.anexo_url, registro.nome_arquivo_original)}
+                                  onClick={() => handleDownload(registro.id, registro.nome_arquivo_original)}
                                   size="sm"
-                                  variant="outline"
-                                  title="Baixar anexo"
+                                  variant="ghost"
+                                  disabled={downloadingId === registro.id}
+                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
+                                  title={`Baixar anexo: ${registro.nome_arquivo_original || "arquivo"}`}
                                 >
-                                  <Download className="w-3 h-3" />
+                                  {downloadingId === registro.id ? (
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
+                                  ) : (
+                                    <Download className="h-4 w-4" />
+                                  )}
                                 </Button>
                               ) : (
-                                <div className="w-8 h-8"></div> // Espaço vazio para manter alinhamento
+                                <div className="h-8 w-8"></div> // Espaço para manter alinhamento
                               )}
 
-                              {/* Botão de Excluir */}
+                              {/* Botão de Excluir - Melhorado */}
                               {canDeleteRecord(registro) && (
                                 <Button
                                   onClick={() => handleDelete(registro)}
                                   size="sm"
-                                  variant="outline"
+                                  variant="ghost"
                                   disabled={deletingId === registro.id}
-                                  className="text-red-600 hover:text-red-700 hover:border-red-300 hover:bg-red-50"
-                                  title={`Excluir registro "${registro.titulo}"`}
+                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
+                                  title={`Excluir registro: ${registro.titulo}`}
                                 >
                                   {deletingId === registro.id ? (
-                                    <RefreshCw className="w-3 h-3 animate-spin" />
+                                    <RefreshCw className="h-4 w-4 animate-spin" />
                                   ) : (
-                                    <Trash2 className="w-3 h-3" />
+                                    <Trash2 className="h-4 w-4" />
                                   )}
                                 </Button>
                               )}
