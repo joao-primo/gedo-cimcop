@@ -265,7 +265,6 @@ def exportar_resultados(current_user):
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
-# ← NOVO: Endpoint de download que estava faltando
 @pesquisa_bp.route('/<int:registro_id>/download', methods=['GET'])
 @token_required
 @obra_access_required
@@ -294,13 +293,13 @@ def download_anexo(current_user, registro_id):
         print(f"   - Tem blob_url: {bool(registro.blob_url)}")
         print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
 
-        # ← CORRIGIDO: Melhor proxy do Vercel Blob
+        # ← CORRIGIDO: Melhor detecção de tipo e nome do arquivo
         if registro.blob_url:
             try:
                 print(f"🔗 DOWNLOAD: Fazendo proxy do Vercel Blob")
                 print(f"   - URL: {registro.blob_url}")
 
-                # ← CORREÇÃO: Headers mais específicos para preservar tipo
+                # Headers para requisição
                 headers = {
                     'User-Agent': 'GEDO-CIMCOP/1.0',
                     'Accept': '*/*'
@@ -314,46 +313,86 @@ def download_anexo(current_user, registro_id):
                 print(
                     f"✅ DOWNLOAD: Resposta do Vercel Blob: {response.status_code}")
                 print(
-                    f"   - Content-Type: {response.headers.get('content-type')}")
+                    f"   - Content-Type original: {response.headers.get('content-type')}")
                 print(
                     f"   - Content-Length: {response.headers.get('content-length')}")
 
-                # ← CORREÇÃO: Determinar Content-Type correto
-                content_type = response.headers.get('content-type')
+                # ← CORREÇÃO CRÍTICA: Melhor detecção de Content-Type e nome do arquivo
 
-                # Se não tem Content-Type ou é genérico, usar baseado na extensão
-                if not content_type or content_type == 'application/octet-stream':
-                    if registro.formato_arquivo:
-                        content_type = mimetypes.guess_type(
-                            f"file.{registro.formato_arquivo}")[0]
+                # 1. Determinar extensão do arquivo
+                file_extension = None
+                if registro.formato_arquivo:
+                    file_extension = registro.formato_arquivo.lower()
+                elif registro.nome_arquivo_original and '.' in registro.nome_arquivo_original:
+                    file_extension = registro.nome_arquivo_original.rsplit('.', 1)[
+                        1].lower()
 
-                    if not content_type:
-                        # Fallback baseado na extensão
-                        content_type_map = {
-                            'pdf': 'application/pdf',
-                            'doc': 'application/msword',
-                            'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                            'xls': 'application/vnd.ms-excel',
-                            'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                            'png': 'image/png',
-                            'jpg': 'image/jpeg',
-                            'jpeg': 'image/jpeg',
-                            'gif': 'image/gif',
-                            'txt': 'text/plain'
-                        }
-                        content_type = content_type_map.get(
-                            registro.formato_arquivo, 'application/octet-stream')
+                print(f"📎 DOWNLOAD: Extensão detectada: {file_extension}")
+
+                # 2. Determinar Content-Type correto baseado na extensão
+                content_type_map = {
+                    'pdf': 'application/pdf',
+                    'doc': 'application/msword',
+                    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'xls': 'application/vnd.ms-excel',
+                    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'ppt': 'application/vnd.ms-powerpoint',
+                    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    'png': 'image/png',
+                    'jpg': 'image/jpeg',
+                    'jpeg': 'image/jpeg',
+                    'gif': 'image/gif',
+                    'bmp': 'image/bmp',
+                    'tiff': 'image/tiff',
+                    'txt': 'text/plain',
+                    'csv': 'text/csv',
+                    'zip': 'application/zip',
+                    'rar': 'application/x-rar-compressed',
+                    '7z': 'application/x-7z-compressed',
+                    'mp4': 'video/mp4',
+                    'avi': 'video/x-msvideo',
+                    'mp3': 'audio/mpeg',
+                    'wav': 'audio/wav'
+                }
+
+                # Usar Content-Type baseado na extensão
+                if file_extension and file_extension in content_type_map:
+                    content_type = content_type_map[file_extension]
+                else:
+                    # Tentar usar o Content-Type da resposta
+                    content_type = response.headers.get(
+                        'content-type', 'application/octet-stream')
+                    # Se for genérico, usar mimetypes
+                    if content_type == 'application/octet-stream' and file_extension:
+                        guessed_type = mimetypes.guess_type(
+                            f"file.{file_extension}")[0]
+                        if guessed_type:
+                            content_type = guessed_type
 
                 print(f"📎 DOWNLOAD: Content-Type final: {content_type}")
 
-                # Determinar nome do arquivo
-                filename = registro.nome_arquivo_original or f'anexo_{registro_id}'
-                if registro.formato_arquivo and not filename.endswith(f'.{registro.formato_arquivo}'):
-                    filename = f"{filename}.{registro.formato_arquivo}"
+                # 3. Determinar nome do arquivo com extensão correta
+                if registro.nome_arquivo_original:
+                    filename = registro.nome_arquivo_original
+                    # Garantir que tem a extensão correta
+                    if file_extension and not filename.lower().endswith(f'.{file_extension}'):
+                        # Se o nome não tem extensão, adicionar
+                        if '.' not in filename:
+                            filename = f"{filename}.{file_extension}"
+                        # Se tem extensão diferente, substituir
+                        else:
+                            base_name = filename.rsplit('.', 1)[0]
+                            filename = f"{base_name}.{file_extension}"
+                else:
+                    # Nome padrão com extensão
+                    if file_extension:
+                        filename = f"anexo_{registro_id}.{file_extension}"
+                    else:
+                        filename = f"anexo_{registro_id}"
 
-                print(f"📎 DOWNLOAD: Nome do arquivo: {filename}")
+                print(f"📎 DOWNLOAD: Nome do arquivo final: {filename}")
 
-                # ← CORREÇÃO: Criar resposta streaming preservando o tipo
+                # 4. Criar resposta streaming com headers corretos
                 def generate():
                     try:
                         for chunk in response.iter_content(chunk_size=8192):
@@ -365,16 +404,26 @@ def download_anexo(current_user, registro_id):
 
                 print("🚀 DOWNLOAD: Iniciando streaming do arquivo...")
 
-                # Retornar arquivo como stream com tipo correto
+                # ← CORREÇÃO: Headers mais específicos para forçar download correto
+                response_headers = {
+                    'Content-Type': content_type,
+                    'Content-Disposition': f'attachment; filename="{filename}"',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                    'X-Content-Type-Options': 'nosniff'
+                }
+
+                # Adicionar Content-Length se disponível
+                content_length = response.headers.get('content-length')
+                if content_length:
+                    response_headers['Content-Length'] = content_length
+
+                print(f"📋 DOWNLOAD: Headers da resposta: {response_headers}")
+
                 return Response(
                     generate(),
-                    headers={
-                        'Content-Type': content_type,
-                        'Content-Disposition': f'attachment; filename="{filename}"',
-                        'Content-Length': response.headers.get('content-length', ''),
-                        'Cache-Control': 'no-cache',
-                        'X-Content-Type-Options': 'nosniff'
-                    }
+                    headers=response_headers
                 )
 
             except requests.RequestException as e:
@@ -396,11 +445,26 @@ def download_anexo(current_user, registro_id):
             return jsonify({'message': 'Arquivo não encontrado no servidor'}), 404
 
         print("✅ DOWNLOAD: Enviando arquivo local")
+
+        # ← CORREÇÃO: Melhor detecção para arquivos locais também
+        filename = registro.nome_arquivo_original or f'anexo_{registro_id}'
+        if registro.formato_arquivo and not filename.lower().endswith(f'.{registro.formato_arquivo}'):
+            if '.' not in filename:
+                filename = f"{filename}.{registro.formato_arquivo}"
+
+        # Detectar mimetype para arquivo local
+        mimetype = 'application/octet-stream'
+        if registro.formato_arquivo:
+            guessed_type = mimetypes.guess_type(
+                f"file.{registro.formato_arquivo}")[0]
+            if guessed_type:
+                mimetype = guessed_type
+
         return send_file(
             registro.caminho_anexo,
             as_attachment=True,
-            download_name=registro.nome_arquivo_original or 'anexo',
-            mimetype='application/octet-stream'
+            download_name=filename,
+            mimetype=mimetype
         )
 
     except Exception as e:
@@ -410,7 +474,6 @@ def download_anexo(current_user, registro_id):
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
-# ← NOVO: Endpoint de debug para troubleshooting
 @pesquisa_bp.route('/<int:registro_id>/debug', methods=['GET'])
 @token_required
 def debug_registro(current_user, registro_id):

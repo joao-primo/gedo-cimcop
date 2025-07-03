@@ -291,7 +291,8 @@ const Pesquisa = () => {
             <CardDescription>Use os filtros abaixo para refinar sua pesquisa</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
+            {/* ← MODIFICADO: Primeira linha com Data, Obra e Tipo de Registro */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
               <div>
                 <Label htmlFor="data_registro_inicio">Data do Registro</Label>
                 <Input
@@ -342,7 +343,10 @@ const Pesquisa = () => {
                   </SelectContent>
                 </Select>
               </div>
+            </div>
 
+            {/* ← NOVO: Segunda linha só com Palavra-chave */}
+            <div className="mb-6">
               <div>
                 <Label htmlFor="palavra_chave">Palavra-chave</Label>
                 <Input
@@ -357,7 +361,7 @@ const Pesquisa = () => {
               </div>
             </div>
 
-            {/* Botões de ação */}
+            {/* ← MANTIDO: Botões de ação logo embaixo da palavra-chave */}
             <div className="flex gap-3">
               <Button onClick={handleSearch} disabled={loading}>
                 {loading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}

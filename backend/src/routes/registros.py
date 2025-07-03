@@ -10,6 +10,7 @@ import os
 import uuid
 import requests
 import tempfile
+import mimetypes
 
 registros_bp = Blueprint('registros', __name__)
 registros_bp.strict_slashes = False
@@ -61,8 +62,9 @@ def save_file_blob(file):
                 'blob_url': blob_data['url'],
                 'blob_pathname': blob_data['pathname'],
                 'nome_arquivo_original': blob_data['filename'],
-                'formato_arquivo': blob_data['filename'].rsplit('.', 1)[1].lower() if '.' in blob_data['filename'] else None,
-                'tamanho_arquivo': blob_data['size']
+                'formato_arquivo': blob_data.get('file_extension', blob_data['filename'].rsplit('.', 1)[1].lower() if '.' in blob_data['filename'] else None),
+                'tamanho_arquivo': blob_data['size'],
+                'content_type': blob_data.get('content_type', 'application/octet-stream')
             }
     except Exception as e:
         print(f"❌ Erro no upload para Blob: {str(e)}")
@@ -109,7 +111,6 @@ def validate_registro_data(data, files):
     return errors
 
 
-# ← NOVO: Endpoint de debug
 @registros_bp.route('/<int:registro_id>/debug', methods=['GET'])
 @token_required
 def debug_registro(current_user, registro_id):
@@ -131,6 +132,8 @@ def debug_registro(current_user, registro_id):
         print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
         print(f"   - Blob URL: {registro.blob_url}")
         print(f"   - Caminho anexo: {registro.caminho_anexo}")
+        print(f"   - Formato arquivo: {registro.formato_arquivo}")
+        print(f"   - Nome original: {registro.nome_arquivo_original}")
 
         return jsonify({
             'message': 'Registro encontrado',
@@ -143,6 +146,7 @@ def debug_registro(current_user, registro_id):
                 'blob_url': registro.blob_url,
                 'caminho_anexo': registro.caminho_anexo,
                 'nome_arquivo_original': registro.nome_arquivo_original,
+                'formato_arquivo': registro.formato_arquivo,
                 'tem_anexo': bool(registro.blob_url or registro.caminho_anexo)
             }
         }), 200
@@ -170,8 +174,8 @@ def download_anexo(current_user, registro_id):
 
         print(f"✅ DOWNLOAD: Registro {registro_id} encontrado")
         print(f"   - Título: {registro.titulo}")
-        print(f"   - Obra ID: {registro.obra_id}")
-        print(f"   - Usuário obra ID: {current_user.obra_id}")
+        print(f"   - Nome original: {registro.nome_arquivo_original}")
+        print(f"   - Formato: {registro.formato_arquivo}")
 
         # Verificar permissões
         if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
@@ -183,34 +187,106 @@ def download_anexo(current_user, registro_id):
         print(f"   - Tem blob_url: {bool(registro.blob_url)}")
         print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
 
-        # ATUALIZADO: Fazer proxy do Vercel Blob
+        # ← CORRIGIDO: Melhor detecção de tipo e nome do arquivo
         if registro.blob_url:
             try:
                 print(f"🔗 DOWNLOAD: Fazendo proxy do Vercel Blob")
                 print(f"   - URL: {registro.blob_url}")
 
-                # Fazer download do Vercel Blob
+                # Headers para requisição
+                headers = {
+                    'User-Agent': 'GEDO-CIMCOP/1.0',
+                    'Accept': '*/*'
+                }
+
                 print("📡 DOWNLOAD: Fazendo requisição para Vercel Blob...")
                 response = requests.get(
-                    registro.blob_url, stream=True, timeout=30)
+                    registro.blob_url, headers=headers, stream=True, timeout=60)
                 response.raise_for_status()
 
                 print(
                     f"✅ DOWNLOAD: Resposta do Vercel Blob: {response.status_code}")
                 print(
-                    f"   - Content-Type: {response.headers.get('content-type')}")
+                    f"   - Content-Type original: {response.headers.get('content-type')}")
                 print(
                     f"   - Content-Length: {response.headers.get('content-length')}")
 
-                # Determinar tipo de conteúdo
-                content_type = response.headers.get(
-                    'content-type', 'application/octet-stream')
+                # ← CORREÇÃO CRÍTICA: Melhor detecção de Content-Type e nome do arquivo
 
-                # Determinar nome do arquivo
-                filename = registro.nome_arquivo_original or f'anexo_{registro_id}'
-                print(f"📎 DOWNLOAD: Nome do arquivo: {filename}")
+                # 1. Determinar extensão do arquivo
+                file_extension = None
+                if registro.formato_arquivo:
+                    file_extension = registro.formato_arquivo.lower()
+                elif registro.nome_arquivo_original and '.' in registro.nome_arquivo_original:
+                    file_extension = registro.nome_arquivo_original.rsplit('.', 1)[
+                        1].lower()
 
-                # Criar resposta streaming
+                print(f"📎 DOWNLOAD: Extensão detectada: {file_extension}")
+
+                # 2. Determinar Content-Type correto baseado na extensão
+                content_type_map = {
+                    'pdf': 'application/pdf',
+                    'doc': 'application/msword',
+                    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'xls': 'application/vnd.ms-excel',
+                    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'ppt': 'application/vnd.ms-powerpoint',
+                    'pptx': 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+                    'png': 'image/png',
+                    'jpg': 'image/jpeg',
+                    'jpeg': 'image/jpeg',
+                    'gif': 'image/gif',
+                    'bmp': 'image/bmp',
+                    'tiff': 'image/tiff',
+                    'txt': 'text/plain',
+                    'csv': 'text/csv',
+                    'zip': 'application/zip',
+                    'rar': 'application/x-rar-compressed',
+                    '7z': 'application/x-7z-compressed',
+                    'mp4': 'video/mp4',
+                    'avi': 'video/x-msvideo',
+                    'mp3': 'audio/mpeg',
+                    'wav': 'audio/wav'
+                }
+
+                # Usar Content-Type baseado na extensão
+                if file_extension and file_extension in content_type_map:
+                    content_type = content_type_map[file_extension]
+                else:
+                    # Tentar usar o Content-Type da resposta
+                    content_type = response.headers.get(
+                        'content-type', 'application/octet-stream')
+                    # Se for genérico, usar mimetypes
+                    if content_type == 'application/octet-stream' and file_extension:
+                        guessed_type = mimetypes.guess_type(
+                            f"file.{file_extension}")[0]
+                        if guessed_type:
+                            content_type = guessed_type
+
+                print(f"📎 DOWNLOAD: Content-Type final: {content_type}")
+
+                # 3. Determinar nome do arquivo com extensão correta
+                if registro.nome_arquivo_original:
+                    filename = registro.nome_arquivo_original
+                    # Garantir que tem a extensão correta
+                    if file_extension and not filename.lower().endswith(f'.{file_extension}'):
+                        # Se o nome não tem extensão, adicionar
+                        if '.' not in filename:
+                            filename = f"{filename}.{file_extension}"
+                        # Se tem extensão diferente, substituir
+                        else:
+                            base_name = filename.rsplit('.', 1)[0]
+                            filename = f"{base_name}.{file_extension}"
+                else:
+                    # Nome padrão com extensão
+                    if file_extension:
+                        filename = f"anexo_{registro_id}.{file_extension}"
+                    else:
+                        filename = f"anexo_{registro_id}"
+
+                print(f"📎 DOWNLOAD: Nome do arquivo final: {filename}")
+
+                # 4. Criar resposta streaming com headers corretos
                 def generate():
                     try:
                         for chunk in response.iter_content(chunk_size=8192):
@@ -222,15 +298,26 @@ def download_anexo(current_user, registro_id):
 
                 print("🚀 DOWNLOAD: Iniciando streaming do arquivo...")
 
-                # Retornar arquivo como stream
+                # ← CORREÇÃO: Headers mais específicos para forçar download correto
+                response_headers = {
+                    'Content-Type': content_type,
+                    'Content-Disposition': f'attachment; filename="{filename}"',
+                    'Cache-Control': 'no-cache, no-store, must-revalidate',
+                    'Pragma': 'no-cache',
+                    'Expires': '0',
+                    'X-Content-Type-Options': 'nosniff'
+                }
+
+                # Adicionar Content-Length se disponível
+                content_length = response.headers.get('content-length')
+                if content_length:
+                    response_headers['Content-Length'] = content_length
+
+                print(f"📋 DOWNLOAD: Headers da resposta: {response_headers}")
+
                 return Response(
                     generate(),
-                    headers={
-                        'Content-Type': content_type,
-                        'Content-Disposition': f'attachment; filename="{filename}"',
-                        'Content-Length': response.headers.get('content-length', ''),
-                        'Cache-Control': 'no-cache'
-                    }
+                    headers=response_headers
                 )
 
             except requests.RequestException as e:
@@ -252,11 +339,26 @@ def download_anexo(current_user, registro_id):
             return jsonify({'message': 'Arquivo não encontrado no servidor'}), 404
 
         print("✅ DOWNLOAD: Enviando arquivo local")
+
+        # ← CORREÇÃO: Melhor detecção para arquivos locais também
+        filename = registro.nome_arquivo_original or f'anexo_{registro_id}'
+        if registro.formato_arquivo and not filename.lower().endswith(f'.{registro.formato_arquivo}'):
+            if '.' not in filename:
+                filename = f"{filename}.{registro.formato_arquivo}"
+
+        # Detectar mimetype para arquivo local
+        mimetype = 'application/octet-stream'
+        if registro.formato_arquivo:
+            guessed_type = mimetypes.guess_type(
+                f"file.{registro.formato_arquivo}")[0]
+            if guessed_type:
+                mimetype = guessed_type
+
         return send_file(
             registro.caminho_anexo,
             as_attachment=True,
-            download_name=registro.nome_arquivo_original or 'anexo',
-            mimetype='application/octet-stream'
+            download_name=filename,
+            mimetype=mimetype
         )
 
     except Exception as e:
@@ -379,11 +481,12 @@ def create_registro(current_user):
             except ValueError:
                 return jsonify({'message': 'Formato de data_registro inválido (use YYYY-MM-DD)'}), 400
 
-        # ATUALIZADO: Usar nova função de upload
+        # ← CORRIGIDO: Usar nova função de upload
         file_info = {}
         if 'anexo' in request.files:
             file = request.files['anexo']
             if file.filename != '':
+                print(f"📤 UPLOAD: Processando arquivo {file.filename}")
                 file_data = save_file(file)
                 if file_data:
                     file_info = file_data
@@ -409,6 +512,7 @@ def create_registro(current_user):
         print(f"✅ Registro criado: ID {registro.id}")
         print(f"   - Tem blob_url: {bool(registro.blob_url)}")
         print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
+        print(f"   - Formato: {registro.formato_arquivo}")
 
         try:
             from services.email_service import processar_workflow_registro
@@ -459,7 +563,7 @@ def update_registro(current_user, registro_id):
             registro.tipo_registro_id = request.form.get(
                 'tipo_registro_id', type=int)
 
-        # ATUALIZADO: Processar novo arquivo
+        # Processar novo arquivo
         if 'anexo' in request.files:
             file = request.files['anexo']
             if file.filename != '':
@@ -507,7 +611,7 @@ def delete_registro(current_user, registro_id):
         if current_user.role != 'administrador' and registro.autor_id != current_user.id:
             return jsonify({'message': 'Apenas o autor ou administrador pode deletar este registro'}), 403
 
-        # ATUALIZADO: Deletar arquivo do Blob ou local
+        # Deletar arquivo do Blob ou local
         if registro.blob_pathname:
             blob_service.delete_file(registro.blob_pathname)
         elif registro.caminho_anexo and os.path.exists(registro.caminho_anexo):
