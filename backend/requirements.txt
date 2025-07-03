@@ -12,7 +12,7 @@ PyJWT==2.8.0
 SQLAlchemy==2.0.41
 typing_extensions==4.14.0
 Werkzeug==2.3.7
-pandas==2.1.4
+pandas==2.2.3
 openpyxl==3.1.2
 python-dotenv==1.0.0
 email-validator==2.1.0
@@ -22,3 +22,4 @@ python-dateutil==2.8.2
 requests==2.31.0
 gunicorn==21.2.0
 psycopg2-binary==2.9.9
+numpy==1.24.4

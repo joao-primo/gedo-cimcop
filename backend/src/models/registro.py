@@ -15,7 +15,12 @@ class Registro(db.Model):
     codigo_numero = db.Column(db.String(50), nullable=True)
     descricao = db.Column(db.Text, nullable=False)
 
+    # ATUALIZADO: Campos para Vercel Blob
+    # Mantido para compatibilidade
     caminho_anexo = db.Column(db.String(500), nullable=True)
+    blob_url = db.Column(db.String(500), nullable=True)  # URL do Vercel Blob
+    # Pathname para deletar
+    blob_pathname = db.Column(db.String(500), nullable=True)
     nome_arquivo_original = db.Column(db.String(200), nullable=True)
     formato_arquivo = db.Column(db.String(20), nullable=True)
     tamanho_arquivo = db.Column(db.Integer, nullable=True)
@@ -37,7 +42,7 @@ class Registro(db.Model):
     def __init__(self, titulo, tipo_registro, descricao, autor_id, obra_id,
                  data_registro=None, codigo_numero=None, caminho_anexo=None,
                  nome_arquivo_original=None, formato_arquivo=None, tamanho_arquivo=None,
-                 tipo_registro_id=None):
+                 tipo_registro_id=None, blob_url=None, blob_pathname=None):
         self.titulo = titulo
         self.tipo_registro = tipo_registro
         self.descricao = descricao
@@ -46,6 +51,8 @@ class Registro(db.Model):
         self.data_registro = data_registro or datetime.utcnow()
         self.codigo_numero = codigo_numero
         self.caminho_anexo = caminho_anexo
+        self.blob_url = blob_url
+        self.blob_pathname = blob_pathname
         self.nome_arquivo_original = nome_arquivo_original
         self.formato_arquivo = formato_arquivo
         self.tamanho_arquivo = tamanho_arquivo
@@ -61,7 +68,8 @@ class Registro(db.Model):
             'data_registro': self.data_registro.isoformat() if self.data_registro else None,
             'autor_nome': self.autor.username if self.autor else None,
             'obra_nome': self.obra.nome if self.obra else None,
-            # CORRIGIDO: URL para download direto
-            'anexo_url': f"/api/registros/{self.id}/download" if self.caminho_anexo else None,
+            # ATUALIZADO: Priorizar Blob URL, fallback para sistema antigo
+            'anexo_url': self.blob_url or (f"/api/registros/{self.id}/download" if self.caminho_anexo else None),
             'nome_arquivo_original': self.nome_arquivo_original,
+            'tem_anexo': bool(self.blob_url or self.caminho_anexo),
         }
