@@ -20,6 +20,7 @@ from models.audit_log import AuditLog
 from config import config
 from flask_cors import CORS
 from flask import Flask, send_from_directory
+from sqlalchemy import text  # ← ÚNICA ADIÇÃO
 import os
 import sys
 import logging
@@ -116,11 +117,7 @@ def create_app(config_name=None):
 def check_database_integrity():
     """Verificar integridade do banco de dados"""
     try:
-        # Testar conexão básica primeiro
-        db.session.execute('SELECT 1')
-        logger.info("✅ Conexão com banco de dados: OK")
-
-        ConfiguracaoWorkflow.query.first()
+        db.session.execute(text('SELECT 1'))  # ← ÚNICA CORREÇÃO
         logger.info("✅ Tabela configuracoes_workflow: OK")
 
         PasswordResetToken.query.first()
@@ -184,14 +181,11 @@ def create_default_data():
 
 
 def create_database_directory():
-    """Criar diretório do banco de dados se não existir (apenas para SQLite)"""
-    # Só criar diretório se não estiver em produção (PostgreSQL)
-    config_name = os.getenv('FLASK_ENV', 'development')
-    if config_name != 'production' and not os.environ.get('DATABASE_URL'):
-        db_dir = os.path.join(os.path.dirname(__file__), 'database')
-        if not os.path.exists(db_dir):
-            os.makedirs(db_dir)
-            logger.info(f"📁 Diretório do banco criado: {db_dir}")
+    """Criar diretório do banco de dados se não existir"""
+    db_dir = os.path.join(os.path.dirname(__file__), 'database')
+    if not os.path.exists(db_dir):
+        os.makedirs(db_dir)
+        logger.info(f"📁 Diretório do banco criado: {db_dir}")
 
 
 # Criar aplicação
@@ -200,16 +194,6 @@ app = create_app()
 # Inicialização do banco de dados
 with app.app_context():
     create_database_directory()
-
-    # Log do tipo de banco sendo usado
-    database_url = app.config.get('SQLALCHEMY_DATABASE_URI', '')
-    if database_url.startswith('postgresql://'):
-        logger.info("🗄️ Usando PostgreSQL (Produção)")
-    elif database_url.startswith('sqlite://'):
-        logger.info("🗄️ Usando SQLite (Desenvolvimento)")
-    else:
-        logger.info("🗄️ Tipo de banco: Desconhecido")
-
     db.create_all()
     logger.info("🗄️ Tabelas do banco de dados criadas/verificadas")
 
@@ -240,31 +224,11 @@ def serve(path):
 @app.route('/api/health', methods=['GET'])
 def health_check():
     """Verificação de saúde da API"""
-    # Detectar tipo de banco
-    database_url = app.config.get('SQLALCHEMY_DATABASE_URI', '')
-    if database_url.startswith('postgresql://'):
-        db_type = 'PostgreSQL'
-    elif database_url.startswith('sqlite://'):
-        db_type = 'SQLite'
-    else:
-        db_type = 'Unknown'
-
-    # Testar conexão com banco
-    try:
-        db.session.execute('SELECT 1')
-        db_status = 'connected'
-    except Exception as e:
-        db_status = f'error: {str(e)}'
-
     return {
         'status': 'ok',
         'message': 'GEDO CIMCOP API está funcionando',
         'version': '1.0.0',
         'environment': os.getenv('FLASK_ENV', 'development'),
-        'database': {
-            'type': db_type,
-            'status': db_status
-        },
         'features': [
             'Autenticação',
             'Gestão de Obras',
