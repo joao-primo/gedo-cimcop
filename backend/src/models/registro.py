@@ -66,10 +66,16 @@ class Registro(db.Model):
             'tipo_registro': self.tipo_registro,
             'tipo_registro_nome': self.tipo_registro_rel.nome if self.tipo_registro_rel else None,
             'data_registro': self.data_registro.isoformat() if self.data_registro else None,
+            'codigo_numero': self.codigo_numero,
             'autor_nome': self.autor.username if self.autor else None,
             'obra_nome': self.obra.nome if self.obra else None,
-            # ATUALIZADO: Priorizar Blob URL, fallback para sistema antigo
-            'anexo_url': self.blob_url or (f"/api/registros/{self.id}/download" if self.caminho_anexo else None),
+            'obra_codigo': self.obra.codigo if self.obra else None,
+            # CORREÇÃO CRÍTICA: SEMPRE usar URL do backend, nunca Blob diretamente
+            'anexo_url': f"/api/registros/{self.id}/download" if (self.blob_url or self.caminho_anexo) else None,
             'nome_arquivo_original': self.nome_arquivo_original,
+            'formato_arquivo': self.formato_arquivo,
+            'tamanho_arquivo': self.tamanho_arquivo,
             'tem_anexo': bool(self.blob_url or self.caminho_anexo),
+            'created_at': self.created_at.isoformat() if self.created_at else None,
+            'updated_at': self.updated_at.isoformat() if self.updated_at else None,
         }

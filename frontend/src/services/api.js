@@ -3,7 +3,7 @@ import axios from "axios"
 // Configuração base do axios
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL,
-  timeout: 10000,
+  timeout: 30000, // ← AUMENTADO: 30 segundos para downloads grandes
   headers: {
     "Content-Type": "application/json",
   },
@@ -73,16 +73,63 @@ export const pesquisaAPI = {
 export const registrosAPI = {
   listar: (params) => api.get("/registros/", { params }),
   criar: (data) => {
-    // ← CORREÇÃO: Configurar headers para FormData
     return api.post("/registros/", data, {
       headers: {
-        "Content-Type": "multipart/form-data",
+        "Content-Type": undefined, // Deixar o browser definir automaticamente
       },
     })
   },
   obter: (id) => api.get(`/registros/${id}`),
   atualizar: (id, data) => api.put(`/registros/${id}`, data),
   deletar: (id) => api.delete(`/registros/${id}`),
+  // ← CORREÇÃO CRÍTICA: Sempre usar backend como proxy
+  downloadAnexo: async (id) => {
+    try {
+      console.log("🔽 Baixando arquivo via backend proxy:", `/api/registros/${id}/download`)
+
+      const response = await api.get(`/registros/${id}/download`, {
+        responseType: "blob", // Importante para arquivos
+        timeout: 60000, // 60 segundos para downloads grandes
+      })
+
+      // Extrair nome do arquivo do header Content-Disposition
+      const contentDisposition = response.headers["content-disposition"]
+      let filename = `anexo_${id}`
+
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+        if (filenameMatch) {
+          filename = filenameMatch[1]
+        }
+      }
+
+      // Criar URL do blob e fazer download
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement("a")
+      link.href = url
+      link.setAttribute("download", filename)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      console.log("✅ Download concluído:", filename)
+      return { success: true, filename }
+    } catch (error) {
+      console.error("❌ Erro ao baixar arquivo:", error)
+
+      // Mensagens de erro mais específicas
+      if (error.response?.status === 404) {
+        throw new Error("Arquivo não encontrado")
+      } else if (error.response?.status === 403) {
+        throw new Error("Acesso negado ao arquivo")
+      } else if (error.code === "ECONNABORTED") {
+        throw new Error("Timeout no download - arquivo muito grande")
+      } else {
+        throw new Error("Erro ao baixar arquivo")
+      }
+    }
+  },
   importarLote: (formData) =>
     api.post("/importacao/lote", formData, {
       headers: { "Content-Type": "multipart/form-data" },
