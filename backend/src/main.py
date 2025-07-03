@@ -19,7 +19,6 @@ from models.password_reset import PasswordResetToken
 from models.audit_log import AuditLog
 from config import config
 from flask_cors import CORS
-# ← CORREÇÃO: Adicionar request
 from flask import Flask, send_from_directory, request
 from sqlalchemy import text
 import os
@@ -131,13 +130,11 @@ def create_app(config_name=None):
 
             return response
 
-    # ← CORREÇÃO: Middleware de segurança simplificado
     @app.after_request
     def security_headers(response):
         """Adiciona headers de segurança"""
         # Headers CORS adicionais apenas se necessário
         try:
-            # ← CORREÇÃO: request já importado
             origin = request.headers.get('Origin')
             if origin and config_name == 'production':
                 if origin.endswith('.vercel.app') or origin in ['https://gedo-cimcop.vercel.app']:
@@ -171,6 +168,48 @@ def create_app(config_name=None):
         return {'message': 'Arquivo muito grande'}, 413
 
     return app
+
+
+def migrate_blob_columns():
+    """Migração automática das colunas do Vercel Blob"""
+    try:
+        # Verificar se as colunas já existem
+        result = db.session.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'registros' 
+            AND column_name IN ('blob_url', 'blob_pathname')
+        """))
+
+        existing_columns = [row[0] for row in result.fetchall()]
+
+        # Adicionar blob_url se não existir
+        if 'blob_url' not in existing_columns:
+            logger.info("➕ Adicionando coluna blob_url...")
+            db.session.execute(text("""
+                ALTER TABLE registros 
+                ADD COLUMN blob_url VARCHAR(500)
+            """))
+            logger.info("✅ Coluna blob_url adicionada")
+
+        # Adicionar blob_pathname se não existir
+        if 'blob_pathname' not in existing_columns:
+            logger.info("➕ Adicionando coluna blob_pathname...")
+            db.session.execute(text("""
+                ALTER TABLE registros 
+                ADD COLUMN blob_pathname VARCHAR(500)
+            """))
+            logger.info("✅ Coluna blob_pathname adicionada")
+
+        # Commit das alterações
+        db.session.commit()
+        logger.info("🎉 Migração das colunas Blob concluída!")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Erro na migração Blob: {str(e)}")
+        db.session.rollback()
+        return False
 
 
 def check_database_integrity():
@@ -256,6 +295,9 @@ with app.app_context():
     db.create_all()
     logger.info("🗄️ Tabelas do banco de dados criadas/verificadas")
 
+    # NOVO: Executar migração das colunas Blob
+    migrate_blob_columns()
+
     if create_default_data():
         logger.info("📊 Dados padrão inicializados")
         logger.info("✅ Sistema GEDO CIMCOP inicializado com sucesso!")
@@ -289,6 +331,7 @@ def health_check():
         'version': '1.0.0',
         'environment': os.getenv('FLASK_ENV', 'development'),
         'cors_enabled': True,
+        'vercel_blob_enabled': bool(os.getenv('BLOB_READ_WRITE_TOKEN')),
         'features': [
             'Autenticação',
             'Gestão de Obras',
@@ -297,7 +340,8 @@ def health_check():
             'Dashboard',
             'Configurações',
             'Importação em Lote',
-            'Reset de Senha'
+            'Reset de Senha',
+            'Vercel Blob Storage'
         ]
     }, 200
 
