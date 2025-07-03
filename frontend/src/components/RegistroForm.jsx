@@ -266,19 +266,19 @@ export default function RegistroForm() {
                   required
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione o tipo" />
+                    <SelectValue placeholder={tipos.length === 0 ? "Nenhum tipo disponível" : "Selecione o tipo"} />
                   </SelectTrigger>
                   <SelectContent>
                     {tipos.length === 0 ? (
-                      <SelectItem value="" disabled>
-                        Nenhum tipo disponível
-                      </SelectItem>
+                      <div className="p-2 text-sm text-gray-500 text-center">Nenhum tipo de registro disponível</div>
                     ) : (
-                      tipos.map((tipo) => (
-                        <SelectItem key={tipo.id} value={tipo.id.toString()}>
-                          {tipo.nome}
-                        </SelectItem>
-                      ))
+                      tipos
+                        .filter((tipo) => tipo.id && tipo.nome) // Filtrar tipos válidos
+                        .map((tipo) => (
+                          <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                            {tipo.nome}
+                          </SelectItem>
+                        ))
                     )}
                   </SelectContent>
                 </Select>
