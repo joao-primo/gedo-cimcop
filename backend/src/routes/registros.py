@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify, send_file, redirect
+from flask import Blueprint, request, jsonify, send_file, redirect, Response
 from werkzeug.utils import secure_filename
 from models.registro import Registro, db
 from models.obra import Obra
@@ -8,13 +8,14 @@ from services.blob_service import blob_service
 from datetime import datetime
 import os
 import uuid
+import requests
+import tempfile
 
 registros_bp = Blueprint('registros', __name__)
 registros_bp.strict_slashes = False
 
 # Configurações para upload de arquivos - MANTIDO para compatibilidade
-UPLOAD_FOLDER = os.path.join(os.path.dirname(
-    os.path.dirname(__file__)), 'uploads')
+UPLOAD_FOLDER = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'uploads')
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg',
                       'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx'}
 
@@ -51,7 +52,7 @@ def save_file_blob(file):
     """NOVO: Salva arquivo no Vercel Blob"""
     if not file or not allowed_file(file.filename):
         return None
-
+        
     try:
         blob_data = blob_service.upload_file(file)
         if blob_data:
@@ -64,7 +65,7 @@ def save_file_blob(file):
             }
     except Exception as e:
         print(f"❌ Erro no upload para Blob: {str(e)}")
-
+        
     return None
 
 
@@ -72,13 +73,13 @@ def save_file(file):
     """Função principal: tenta Blob primeiro, fallback para local"""
     if not file or not allowed_file(file.filename):
         return None
-
+    
     # Tentar Vercel Blob primeiro
     blob_result = save_file_blob(file)
     if blob_result:
         print(f"✅ Arquivo salvo no Vercel Blob: {blob_result['blob_url']}")
         return blob_result
-
+    
     # Fallback para sistema local
     print("⚠️ Fallback para sistema local")
     return save_file_legacy(file)
@@ -87,8 +88,7 @@ def save_file(file):
 def validate_registro_data(data, files):
     """Valida dados do registro"""
     errors = []
-    required_fields = ['titulo', 'tipo_registro',
-                       'descricao', 'tipo_registro_id', 'data_registro']
+    required_fields = ['titulo', 'tipo_registro', 'descricao', 'tipo_registro_id', 'data_registro']
     for field in required_fields:
         if not data.get(field):
             errors.append(f'Campo {field} é obrigatório')
@@ -98,7 +98,7 @@ def validate_registro_data(data, files):
         file.seek(0, 2)
         size = file.tell()
         file.seek(0)
-
+        
         if size > 16 * 1024 * 1024:
             errors.append('Arquivo muito grande (máximo 16MB)')
         if not allowed_file(file.filename):
@@ -119,11 +119,41 @@ def download_anexo(current_user, registro_id):
         if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
             return jsonify({'message': 'Acesso negado a este registro'}), 403
 
-        # ATUALIZADO: Priorizar Blob URL
+        # ATUALIZADO: Fazer proxy do Vercel Blob
         if registro.blob_url:
-            print(f"🔗 Redirecionando para Blob URL: {registro.blob_url}")
-            return redirect(registro.blob_url)
-
+            try:
+                print(f"🔗 Fazendo proxy do Vercel Blob: {registro.blob_url}")
+                
+                # Fazer download do Vercel Blob
+                response = requests.get(registro.blob_url, stream=True)
+                response.raise_for_status()
+                
+                # Determinar tipo de conteúdo
+                content_type = response.headers.get('content-type', 'application/octet-stream')
+                
+                # Determinar nome do arquivo
+                filename = registro.nome_arquivo_original or f'anexo_{registro_id}'
+                
+                # Criar resposta streaming
+                def generate():
+                    for chunk in response.iter_content(chunk_size=8192):
+                        if chunk:
+                            yield chunk
+                
+                # Retornar arquivo como stream
+                return Response(
+                    generate(),
+                    headers={
+                        'Content-Type': content_type,
+                        'Content-Disposition': f'attachment; filename="{filename}"',
+                        'Content-Length': response.headers.get('content-length', '')
+                    }
+                )
+                
+            except requests.RequestException as e:
+                print(f"❌ Erro ao baixar do Vercel Blob: {str(e)}")
+                return jsonify({'message': 'Erro ao acessar arquivo no storage'}), 500
+        
         # Fallback para sistema antigo
         if not registro.caminho_anexo:
             return jsonify({'message': 'Este registro não possui anexo'}), 404
@@ -181,8 +211,7 @@ def list_registros(current_user):
                 return jsonify({'message': 'Formato de data_fim inválido (use YYYY-MM-DD)'}), 400
 
         query = query.order_by(Registro.created_at.desc())
-        registros_paginados = query.paginate(
-            page=page, per_page=per_page, error_out=False)
+        registros_paginados = query.paginate(page=page, per_page=per_page, error_out=False)
 
         return jsonify({
             'registros': [registro.to_dict() for registro in registros_paginados.items],
@@ -325,13 +354,11 @@ def update_registro(current_user, registro_id):
             registro.codigo_numero = request.form['codigo_numero']
         if 'data_registro' in request.form:
             try:
-                registro.data_registro = datetime.strptime(
-                    request.form['data_registro'], '%Y-%m-%d')
+                registro.data_registro = datetime.strptime(request.form['data_registro'], '%Y-%m-%d')
             except ValueError:
                 return jsonify({'message': 'Formato de data_registro inválido (use YYYY-MM-DD)'}), 400
         if 'tipo_registro_id' in request.form:
-            registro.tipo_registro_id = request.form.get(
-                'tipo_registro_id', type=int)
+            registro.tipo_registro_id = request.form.get('tipo_registro_id', type=int)
 
         # ATUALIZADO: Processar novo arquivo
         if 'anexo' in request.files:
