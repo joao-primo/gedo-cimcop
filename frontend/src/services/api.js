@@ -82,7 +82,7 @@ export const registrosAPI = {
   obter: (id) => api.get(`/registros/${id}`),
   atualizar: (id, data) => api.put(`/registros/${id}`, data),
   deletar: (id) => api.delete(`/registros/${id}`),
-  // ← CORREÇÃO CRÍTICA: Sempre usar backend como proxy
+  // ← CORREÇÃO CRÍTICA: Melhor tratamento do filename no download
   downloadAnexo: async (id) => {
     try {
       console.log("🔽 Baixando arquivo via backend proxy:", `/api/registros/${id}/download`)
@@ -92,16 +92,40 @@ export const registrosAPI = {
         timeout: 60000, // 60 segundos para downloads grandes
       })
 
-      // Extrair nome do arquivo do header Content-Disposition
+      // ← CORREÇÃO CRÍTICA: Melhor extração do filename
       const contentDisposition = response.headers["content-disposition"]
       let filename = `anexo_${id}`
 
       if (contentDisposition) {
-        const filenameMatch = contentDisposition.match(/filename="(.+)"/)
+        // Tentar extrair filename do header Content-Disposition
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
         if (filenameMatch) {
-          filename = filenameMatch[1]
+          filename = filenameMatch[1].replace(/['"]/g, "") // Remover aspas
         }
       }
+
+      // ← CORREÇÃO: Se ainda não tem extensão, tentar detectar pelo Content-Type
+      if (!filename.includes(".")) {
+        const contentType = response.headers["content-type"]
+        const extensionMap = {
+          "application/pdf": ".pdf",
+          "application/msword": ".doc",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+          "application/vnd.ms-excel": ".xls",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+          "image/png": ".png",
+          "image/jpeg": ".jpg",
+          "image/gif": ".gif",
+          "text/plain": ".txt",
+        }
+
+        if (contentType && extensionMap[contentType]) {
+          filename += extensionMap[contentType]
+        }
+      }
+
+      console.log("📎 Filename detectado:", filename)
+      console.log("📎 Content-Type:", response.headers["content-type"])
 
       // Criar URL do blob e fazer download
       const url = window.URL.createObjectURL(new Blob([response.data]))

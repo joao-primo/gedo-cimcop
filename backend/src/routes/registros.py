@@ -93,9 +93,18 @@ def validate_registro_data(data, files):
     errors = []
     required_fields = ['titulo', 'tipo_registro',
                        'descricao', 'tipo_registro_id', 'data_registro']
+
+    # ← CORREÇÃO CRÍTICA: Melhor validação dos campos
     for field in required_fields:
-        if not data.get(field):
+        value = data.get(field)
+        if not value or str(value).strip() == '':
             errors.append(f'Campo {field} é obrigatório')
+
+    # ← CORREÇÃO: Validar se obra_id existe para admin
+    if 'obra_id' in data:
+        obra_id = data.get('obra_id')
+        if not obra_id or str(obra_id).strip() == '':
+            errors.append('Campo obra_id é obrigatório')
 
     if 'anexo' in files and files['anexo'].filename != '':
         file = files['anexo']
@@ -268,7 +277,7 @@ def download_anexo(current_user, registro_id):
                 # 3. Determinar nome do arquivo com extensão correta
                 if registro.nome_arquivo_original:
                     filename = registro.nome_arquivo_original
-                    # Garantir que tem a extensão correta
+                    # ← CORREÇÃO CRÍTICA: Garantir que tem a extensão correta
                     if file_extension and not filename.lower().endswith(f'.{file_extension}'):
                         # Se o nome não tem extensão, adicionar
                         if '.' not in filename:
@@ -298,7 +307,7 @@ def download_anexo(current_user, registro_id):
 
                 print("🚀 DOWNLOAD: Iniciando streaming do arquivo...")
 
-                # ← CORREÇÃO: Headers mais específicos para forçar download correto
+                # ← CORREÇÃO CRÍTICA: Headers mais específicos para forçar download correto
                 response_headers = {
                     'Content-Type': content_type,
                     'Content-Disposition': f'attachment; filename="{filename}"',
@@ -447,78 +456,140 @@ def get_registro(current_user, registro_id):
 @obra_access_required
 def create_registro(current_user):
     try:
+        # ← CORREÇÃO CRÍTICA: Melhor debug dos dados recebidos
+        print(f"📥 CREATE REGISTRO: Dados recebidos")
+        print(f"   - Form data: {dict(request.form)}")
+        print(f"   - Files: {list(request.files.keys())}")
+        print(
+            f"   - User: {current_user.username} (role: {current_user.role})")
+
+        # ← CORREÇÃO: Validação mais robusta
         validation_errors = validate_registro_data(request.form, request.files)
         if validation_errors:
+            print(
+                f"❌ CREATE REGISTRO: Erros de validação: {validation_errors}")
             return jsonify({'message': '; '.join(validation_errors)}), 400
 
-        titulo = request.form.get('titulo')
-        tipo_registro = request.form.get('tipo_registro')
-        descricao = request.form.get('descricao')
-        codigo_numero = request.form.get('codigo_numero')
-        data_registro = request.form.get('data_registro')
-        obra_id = request.form.get('obra_id', type=int)
-        tipo_registro_id = request.form.get('tipo_registro_id', type=int)
+        # ← CORREÇÃO: Extrair dados com validação
+        titulo = request.form.get('titulo', '').strip()
+        tipo_registro = request.form.get('tipo_registro', '').strip()
+        descricao = request.form.get('descricao', '').strip()
+        codigo_numero = request.form.get('codigo_numero', '').strip()
+        data_registro = request.form.get('data_registro', '').strip()
+        obra_id = request.form.get('obra_id')
+        tipo_registro_id = request.form.get('tipo_registro_id')
 
+        print(f"📋 CREATE REGISTRO: Campos extraídos")
+        print(f"   - titulo: '{titulo}'")
+        print(f"   - tipo_registro: '{tipo_registro}'")
+        print(f"   - descricao: '{descricao[:50]}...'")
+        print(f"   - obra_id: '{obra_id}'")
+        print(f"   - tipo_registro_id: '{tipo_registro_id}'")
+
+        # ← CORREÇÃO: Conversão segura de IDs
+        try:
+            if obra_id:
+                obra_id = int(obra_id)
+            if tipo_registro_id:
+                tipo_registro_id = int(tipo_registro_id)
+        except (ValueError, TypeError) as e:
+            print(f"❌ CREATE REGISTRO: Erro na conversão de IDs: {str(e)}")
+            return jsonify({'message': 'IDs inválidos fornecidos'}), 400
+
+        # ← CORREÇÃO: Lógica de obra mais clara
         if current_user.role == 'usuario_padrao':
             obra_id = current_user.obra_id
+            print(f"📍 CREATE REGISTRO: Usuário padrão - usando obra {obra_id}")
         elif not obra_id:
-            return jsonify({'message': 'Obra é obrigatória'}), 400
+            print(f"❌ CREATE REGISTRO: Admin sem obra_id")
+            return jsonify({'message': 'Obra é obrigatória para administradores'}), 400
 
+        # Verificar se obra existe
         obra = Obra.query.get(obra_id)
         if not obra:
+            print(f"❌ CREATE REGISTRO: Obra {obra_id} não encontrada")
             return jsonify({'message': 'Obra não encontrada'}), 404
 
-        if obra.status.lower() == 'suspensa':
+        print(
+            f"✅ CREATE REGISTRO: Obra encontrada: {obra.nome} (status: {obra.status})")
+
+        # Verificar se obra está suspensa
+        if obra.status and obra.status.lower() == 'suspensa':
+            print(f"❌ CREATE REGISTRO: Obra suspensa")
             return jsonify({'message': 'A obra está suspensa e não pode receber novos registros.'}), 403
 
+        # Verificar permissões de acesso à obra
         if current_user.role == 'usuario_padrao' and obra_id != current_user.obra_id:
+            print(f"❌ CREATE REGISTRO: Acesso negado à obra")
             return jsonify({'message': 'Acesso negado a esta obra'}), 403
 
+        # ← CORREÇÃO: Conversão de data mais robusta
         data_registro_dt = datetime.utcnow()
         if data_registro:
             try:
                 data_registro_dt = datetime.strptime(data_registro, '%Y-%m-%d')
-            except ValueError:
+                print(
+                    f"📅 CREATE REGISTRO: Data convertida: {data_registro_dt}")
+            except ValueError as e:
+                print(
+                    f"❌ CREATE REGISTRO: Erro na conversão de data: {str(e)}")
                 return jsonify({'message': 'Formato de data_registro inválido (use YYYY-MM-DD)'}), 400
 
-        # ← CORRIGIDO: Usar nova função de upload
+        # ← CORREÇÃO: Processamento de arquivo mais robusto
         file_info = {}
         if 'anexo' in request.files:
             file = request.files['anexo']
-            if file.filename != '':
-                print(f"📤 UPLOAD: Processando arquivo {file.filename}")
-                file_data = save_file(file)
-                if file_data:
-                    file_info = file_data
-                    print(f"✅ Arquivo processado: {file_data}")
-                else:
-                    return jsonify({'message': 'Formato de arquivo não permitido'}), 400
+            if file and file.filename and file.filename.strip() != '':
+                print(
+                    f"📤 CREATE REGISTRO: Processando arquivo {file.filename}")
+                try:
+                    file_data = save_file(file)
+                    if file_data:
+                        file_info = file_data
+                        print(
+                            f"✅ CREATE REGISTRO: Arquivo processado: {file_data.get('nome_arquivo_original')}")
+                    else:
+                        print(f"❌ CREATE REGISTRO: Falha no processamento do arquivo")
+                        return jsonify({'message': 'Formato de arquivo não permitido ou erro no upload'}), 400
+                except Exception as e:
+                    print(f"❌ CREATE REGISTRO: Erro no upload: {str(e)}")
+                    return jsonify({'message': f'Erro no upload do arquivo: {str(e)}'}), 500
 
-        registro = Registro(
-            titulo=titulo,
-            tipo_registro=tipo_registro,
-            descricao=descricao,
-            autor_id=current_user.id,
-            obra_id=obra_id,
-            data_registro=data_registro_dt,
-            codigo_numero=codigo_numero,
-            tipo_registro_id=tipo_registro_id,
-            **file_info
-        )
+        # ← CORREÇÃO: Criação do registro com tratamento de erro
+        try:
+            print(f"💾 CREATE REGISTRO: Criando registro no banco...")
+            registro = Registro(
+                titulo=titulo,
+                tipo_registro=tipo_registro,
+                descricao=descricao,
+                autor_id=current_user.id,
+                obra_id=obra_id,
+                data_registro=data_registro_dt,
+                codigo_numero=codigo_numero if codigo_numero else None,
+                tipo_registro_id=tipo_registro_id if tipo_registro_id else None,
+                **file_info
+            )
 
-        db.session.add(registro)
-        db.session.commit()
+            db.session.add(registro)
+            db.session.commit()
 
-        print(f"✅ Registro criado: ID {registro.id}")
-        print(f"   - Tem blob_url: {bool(registro.blob_url)}")
-        print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
-        print(f"   - Formato: {registro.formato_arquivo}")
+            print(
+                f"✅ CREATE REGISTRO: Registro criado com sucesso - ID {registro.id}")
+            print(f"   - Tem blob_url: {bool(registro.blob_url)}")
+            print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
+            print(f"   - Formato: {registro.formato_arquivo}")
 
+        except Exception as e:
+            print(f"❌ CREATE REGISTRO: Erro ao salvar no banco: {str(e)}")
+            db.session.rollback()
+            return jsonify({'message': f'Erro ao salvar registro: {str(e)}'}), 500
+
+        # ← OPCIONAL: Workflow (não crítico)
         try:
             from services.email_service import processar_workflow_registro
             processar_workflow_registro(registro, 'criacao')
         except Exception as e:
-            print(f"Erro ao processar workflows: {e}")
+            print(f"⚠️ CREATE REGISTRO: Erro no workflow (não crítico): {e}")
 
         return jsonify({
             'message': 'Registro criado com sucesso',
@@ -526,6 +597,9 @@ def create_registro(current_user):
         }), 201
 
     except Exception as e:
+        print(f"❌ CREATE REGISTRO: Erro geral: {str(e)}")
+        import traceback
+        traceback.print_exc()
         db.session.rollback()
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
