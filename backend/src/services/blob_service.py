@@ -21,40 +21,74 @@ class BlobService:
         if not file or not file.filename:
             return None
 
-        # Gerar nome único
+        # Gerar nome único mas preservar extensão
         filename = secure_filename(file.filename)
-        unique_filename = f"{folder}/{uuid.uuid4()}_{filename}"
+        file_extension = filename.rsplit(
+            '.', 1)[1].lower() if '.' in filename else ''
+        unique_filename = f"{folder}/{uuid.uuid4()}.{file_extension}" if file_extension else f"{folder}/{uuid.uuid4()}_{filename}"
 
         try:
-            # Preparar dados para upload
+            # ← CORREÇÃO CRÍTICA: Ler arquivo corretamente
+            file.seek(0)  # Garantir que estamos no início
             file_data = file.read()
-            file.seek(0)  # Reset file pointer
+            file.seek(0)  # Reset para outras operações
 
-            # Upload para Vercel Blob
+            # ← CORREÇÃO: Detectar Content-Type correto
+            content_type = file.content_type
+            if not content_type:
+                # Fallback baseado na extensão
+                content_type_map = {
+                    'pdf': 'application/pdf',
+                    'doc': 'application/msword',
+                    'docx': 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                    'xls': 'application/vnd.ms-excel',
+                    'xlsx': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                    'png': 'image/png',
+                    'jpg': 'image/jpeg',
+                    'jpeg': 'image/jpeg',
+                    'gif': 'image/gif',
+                    'txt': 'text/plain'
+                }
+                content_type = content_type_map.get(
+                    file_extension, 'application/octet-stream')
+
+            current_app.logger.info(
+                f"📤 UPLOAD: {filename} ({len(file_data)} bytes, {content_type})")
+
+            # Upload para Vercel Blob com headers corretos
             response = requests.put(
                 f"{self.base_url}/{unique_filename}",
                 data=file_data,
                 headers={
                     'Authorization': f'Bearer {self.blob_token}',
-                    'Content-Type': file.content_type or 'application/octet-stream'
-                }
+                    'Content-Type': content_type,
+                    'Content-Length': str(len(file_data))
+                },
+                timeout=60  # ← ADICIONADO: Timeout maior para arquivos grandes
             )
+
+            current_app.logger.info(f"📤 BLOB Response: {response.status_code}")
 
             if response.status_code == 200:
                 blob_data = response.json()
+                current_app.logger.info(
+                    f"✅ UPLOAD SUCCESS: {blob_data['url']}")
+
                 return {
                     'url': blob_data['url'],
                     'pathname': blob_data['pathname'],
                     'filename': filename,
                     'size': len(file_data),
-                    'content_type': file.content_type
+                    'content_type': content_type,
+                    'file_extension': file_extension
                 }
             else:
-                current_app.logger.error(f"Erro no upload: {response.text}")
+                current_app.logger.error(
+                    f"❌ UPLOAD ERROR: {response.status_code} - {response.text}")
                 return None
 
         except Exception as e:
-            current_app.logger.error(f"Erro no upload para Blob: {str(e)}")
+            current_app.logger.error(f"❌ UPLOAD EXCEPTION: {str(e)}")
             return None
 
     def delete_file(self, pathname):
@@ -67,15 +101,16 @@ class BlobService:
                 f"{self.base_url}/{pathname}",
                 headers={
                     'Authorization': f'Bearer {self.blob_token}'
-                }
+                },
+                timeout=30
             )
             return response.status_code == 200
         except Exception as e:
-            current_app.logger.error(f"Erro ao deletar arquivo: {str(e)}")
+            current_app.logger.error(f"❌ DELETE ERROR: {str(e)}")
             return False
 
-    def get_download_url(self, pathname):
-        """Obter URL de download direto"""
+    def get_file_info(self, pathname):
+        """Obter informações do arquivo"""
         if not pathname:
             return None
         return f"{self.base_url}/{pathname}"
