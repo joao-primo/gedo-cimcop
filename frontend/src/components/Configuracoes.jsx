@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
+import { configuracoesAPI, authAPI } from "../services/api" // ← ÚNICA ADIÇÃO
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -100,28 +101,19 @@ const Configuracoes = () => {
   const carregarConfiguracoes = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem("token")
+      const response = await configuracoesAPI.get() // ← CORREÇÃO
 
-      const response = await fetch("/api/configuracoes", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        if (data.configuracoes) {
-          setConfiguracoes({ ...configuracoes, ...data.configuracoes })
-        }
-        if (data.sistema && isAdmin()) {
-          setConfigSistema({ ...configSistema, ...data.sistema })
-        }
-        if (data.notificacoes) {
-          setConfigNotificacoes({ ...configNotificacoes, ...data.notificacoes })
-        }
-        if (data.seguranca && isAdmin()) {
-          setConfigSeguranca({ ...configSeguranca, ...data.seguranca })
-        }
+      if (response.data.configuracoes) {
+        setConfiguracoes({ ...configuracoes, ...response.data.configuracoes })
+      }
+      if (response.data.sistema && isAdmin()) {
+        setConfigSistema({ ...configSistema, ...response.data.sistema })
+      }
+      if (response.data.notificacoes) {
+        setConfigNotificacoes({ ...configNotificacoes, ...response.data.notificacoes })
+      }
+      if (response.data.seguranca && isAdmin()) {
+        setConfigSeguranca({ ...configSeguranca, ...response.data.seguranca })
       }
     } catch (error) {
       console.error("Erro ao carregar configurações:", error)
@@ -134,7 +126,6 @@ const Configuracoes = () => {
   const salvarConfiguracoes = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem("token")
 
       const payload = {
         configuracoes,
@@ -143,24 +134,11 @@ const Configuracoes = () => {
         ...(isAdmin() && { seguranca: configSeguranca }),
       }
 
-      const response = await fetch("/api/configuracoes", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(payload),
-      })
-
-      if (response.ok) {
-        showMessage("Configurações salvas com sucesso!", "success")
-      } else {
-        const data = await response.json()
-        showMessage(data.message || "Erro ao salvar configurações", "error")
-      }
+      await configuracoesAPI.save(payload) // ← CORREÇÃO
+      showMessage("Configurações salvas com sucesso!", "success")
     } catch (error) {
       console.error("Erro ao salvar configurações:", error)
-      showMessage("Erro ao salvar configurações", "error")
+      showMessage(error.response?.data?.message || "Erro ao salvar configurações", "error")
     } finally {
       setLoading(false)
     }
@@ -184,33 +162,20 @@ const Configuracoes = () => {
 
     try {
       setLoading(true)
-      const token = localStorage.getItem("token")
 
-      const response = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          current_password: senhaAtual,
-          new_password: novaSenha,
-        }),
+      await authAPI.changePassword({
+        // ← CORREÇÃO
+        current_password: senhaAtual,
+        new_password: novaSenha,
       })
 
-      const data = await response.json()
-
-      if (response.ok) {
-        showMessage("Senha alterada com sucesso!", "success")
-        setSenhaAtual("")
-        setNovaSenha("")
-        setConfirmarSenha("")
-      } else {
-        showMessage(data.message || "Erro ao alterar senha", "error")
-      }
+      showMessage("Senha alterada com sucesso!", "success")
+      setSenhaAtual("")
+      setNovaSenha("")
+      setConfirmarSenha("")
     } catch (error) {
       console.error("Erro ao alterar senha:", error)
-      showMessage("Erro ao alterar senha", "error")
+      showMessage(error.response?.data?.message || "Erro ao alterar senha", "error")
     } finally {
       setLoading(false)
     }
@@ -219,24 +184,11 @@ const Configuracoes = () => {
   const realizarBackup = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem("token")
-
-      const response = await fetch("/api/configuracoes/backup", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        showMessage("Backup realizado com sucesso!", "success")
-      } else {
-        const data = await response.json()
-        showMessage(data.message || "Erro ao realizar backup", "error")
-      }
+      await configuracoesAPI.backup() // ← CORREÇÃO
+      showMessage("Backup realizado com sucesso!", "success")
     } catch (error) {
       console.error("Erro ao realizar backup:", error)
-      showMessage("Erro ao realizar backup", "error")
+      showMessage(error.response?.data?.message || "Erro ao realizar backup", "error")
     } finally {
       setLoading(false)
     }
@@ -249,25 +201,12 @@ const Configuracoes = () => {
 
     try {
       setLoading(true)
-      const token = localStorage.getItem("token")
-
-      const response = await fetch("/api/configuracoes/reset", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        showMessage("Configurações resetadas com sucesso!", "success")
-        await carregarConfiguracoes()
-      } else {
-        const data = await response.json()
-        showMessage(data.message || "Erro ao resetar configurações", "error")
-      }
+      await configuracoesAPI.reset() // ← CORREÇÃO
+      showMessage("Configurações resetadas com sucesso!", "success")
+      await carregarConfiguracoes()
     } catch (error) {
       console.error("Erro ao resetar configurações:", error)
-      showMessage("Erro ao resetar configurações", "error")
+      showMessage(error.response?.data?.message || "Erro ao resetar configurações", "error")
     } finally {
       setLoading(false)
     }

@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { useNavigate } from "react-router-dom"
+import { authAPI } from "../services/api" // ← ÚNICA ADIÇÃO
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -45,15 +46,8 @@ const TrocarSenha = () => {
 
   const fetchPasswordStatus = async () => {
     try {
-      const token = localStorage.getItem("token")
-      const response = await fetch("/api/auth/password-status", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-
-      if (response.ok) {
-        const data = await response.json()
-        setPasswordStatus(data.password_status)
-      }
+      const response = await authAPI.getPasswordStatus() // ← CORREÇÃO
+      setPasswordStatus(response.data.password_status)
     } catch (error) {
       console.error("Erro ao buscar status da senha:", error)
     }
@@ -99,49 +93,36 @@ const TrocarSenha = () => {
 
     try {
       setLoading(true)
-      const token = localStorage.getItem("token")
 
-      const response = await fetch("/api/auth/change-password", {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          current_password: senhaAtual,
-          new_password: novaSenha,
-        }),
+      const response = await authAPI.changePassword({
+        // ← CORREÇÃO
+        current_password: senhaAtual,
+        new_password: novaSenha,
       })
 
-      const data = await response.json()
+      setSucesso("Senha alterada com sucesso!")
 
-      if (response.ok) {
-        setSucesso("Senha alterada com sucesso!")
-
-        // Atualizar status da senha
-        if (data.password_status) {
-          setPasswordStatus(data.password_status)
-        }
-
-        // Atualizar dados do usuário
-        const updatedUser = { ...user, must_change_password: false, password_changed_by_admin: false }
-        updateUser(updatedUser)
-
-        // Limpar campos
-        setSenhaAtual("")
-        setNovaSenha("")
-        setConfirmacao("")
-
-        // Redirecionar após 2 segundos
-        setTimeout(() => {
-          navigate("/dashboard")
-        }, 2000)
-      } else {
-        setErro(data.message || "Erro ao alterar a senha.")
+      // Atualizar status da senha
+      if (response.data.password_status) {
+        setPasswordStatus(response.data.password_status)
       }
+
+      // Atualizar dados do usuário
+      const updatedUser = { ...user, must_change_password: false, password_changed_by_admin: false }
+      updateUser(updatedUser)
+
+      // Limpar campos
+      setSenhaAtual("")
+      setNovaSenha("")
+      setConfirmacao("")
+
+      // Redirecionar após 2 segundos
+      setTimeout(() => {
+        navigate("/dashboard")
+      }, 2000)
     } catch (err) {
       console.error("Erro ao alterar senha:", err)
-      setErro("Erro ao conectar com o servidor.")
+      setErro(err.response?.data?.message || "Erro ao alterar a senha.")
     } finally {
       setLoading(false)
     }

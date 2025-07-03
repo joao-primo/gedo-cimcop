@@ -9,6 +9,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { obrasAPI } from "../services/api" // ← ÚNICA ADIÇÃO
 import {
   Building2,
   Plus,
@@ -51,12 +52,8 @@ const Obras = () => {
   const fetchObras = async () => {
     try {
       setLoading(true)
-      const token = localStorage.getItem("token")
-      const res = await fetch("/api/obras/", {
-        headers: { Authorization: `Bearer ${token}` },
-      })
-      const data = await res.json()
-      setObras(data.obras || [])
+      const res = await obrasAPI.listar() // ← CORREÇÃO: usar API configurada
+      setObras(res.data.obras || [])
     } catch (err) {
       console.error("Erro ao buscar obras:", err)
       setMensagem({ tipo: "error", texto: "Erro ao carregar obras." })
@@ -70,38 +67,24 @@ const Obras = () => {
   }, [])
 
   const salvarObra = async () => {
-    const method = obraSelecionada?.id ? "PUT" : "POST"
-    const url = obraSelecionada?.id ? `/api/obras/${obraSelecionada.id}/` : "/api/obras/"
-    const token = localStorage.getItem("token")
-
-    if (!token) {
-      setMensagem({ tipo: "error", texto: "Token não encontrado. Faça login novamente." })
-      return
-    }
-
     try {
       setLoading(true)
-      const res = await fetch(url, {
-        method,
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${token}`,
-        },
-        body: JSON.stringify(obraSelecionada),
-      })
 
-      const data = await res.json()
-
-      if (res.ok) {
-        setMensagem({ tipo: "success", texto: "Obra salva com sucesso!" })
-        setFormVisible(false)
-        setObraSelecionada(null)
-        fetchObras()
+      if (obraSelecionada?.id) {
+        // ← CORREÇÃO: usar API para atualizar
+        await obrasAPI.atualizar(obraSelecionada.id, obraSelecionada)
       } else {
-        setMensagem({ tipo: "error", texto: data.message || "Erro ao salvar obra." })
+        // ← CORREÇÃO: usar API para criar
+        await obrasAPI.criar(obraSelecionada)
       }
+
+      setMensagem({ tipo: "success", texto: "Obra salva com sucesso!" })
+      setFormVisible(false)
+      setObraSelecionada(null)
+      fetchObras()
     } catch (error) {
-      setMensagem({ tipo: "error", texto: "Erro ao conectar com o servidor." })
+      console.error("Erro ao salvar obra:", error)
+      setMensagem({ tipo: "error", texto: error.response?.data?.message || "Erro ao salvar obra." })
     } finally {
       setLoading(false)
     }
@@ -110,27 +93,17 @@ const Obras = () => {
   const excluirObra = async () => {
     if (!window.confirm("Tem certeza que deseja excluir esta obra?")) return
 
-    const token = localStorage.getItem("token")
-    const url = `/api/obras/${obraSelecionada.id}/`
-
     try {
       setLoading(true)
-      const res = await fetch(url, {
-        method: "DELETE",
-        headers: { Authorization: `Bearer ${token}` },
-      })
+      await obrasAPI.deletar(obraSelecionada.id) // ← CORREÇÃO: usar API para deletar
 
-      if (res.ok) {
-        setMensagem({ tipo: "success", texto: "Obra excluída com sucesso." })
-        setFormVisible(false)
-        setObraSelecionada(null)
-        fetchObras()
-      } else {
-        const data = await res.json()
-        setMensagem({ tipo: "error", texto: data.message || "Erro ao excluir obra." })
-      }
+      setMensagem({ tipo: "success", texto: "Obra excluída com sucesso." })
+      setFormVisible(false)
+      setObraSelecionada(null)
+      fetchObras()
     } catch (error) {
-      setMensagem({ tipo: "error", texto: "Erro ao conectar com o servidor." })
+      console.error("Erro ao excluir obra:", error)
+      setMensagem({ tipo: "error", texto: error.response?.data?.message || "Erro ao excluir obra." })
     } finally {
       setLoading(false)
     }
