@@ -16,6 +16,43 @@ importacao_bp.strict_slashes = False
 
 ALLOWED_EXTENSIONS = {'xlsx', 'xls', 'csv'}
 
+# ✨ Sistema de Classificação Hierárquico
+CLASSIFICACOES = {
+    "Projetos": [
+        "Projeto Arquitetônico", "Projeto Estrutural", "Projeto Hidrossanitário",
+        "Projeto Elétrico", "Projeto de Prevenção de Incêndio", "Projeto Paisagístico",
+        "Projeto de Ar Condicionado", "Outros Projetos"
+    ],
+    "Licenças e Alvarás": [
+        "Alvará de Construção", "Licença Ambiental", "Licença do Corpo de Bombeiros",
+        "Licença Sanitária", "Licença de Funcionamento", "Outros Alvarás"
+    ],
+    "Contratos": [
+        "Contrato Principal", "Contrato de Subempreitada", "Contrato de Fornecimento",
+        "Contrato de Serviços", "Aditivos Contratuais", "Outros Contratos"
+    ],
+    "Documentos Técnicos": [
+        "ART/RRT", "Memorial Descritivo", "Especificações Técnicas",
+        "Manual de Uso", "Laudo Técnico", "Outros Documentos"
+    ],
+    "Financeiro": [
+        "Orçamento", "Cronograma Físico-Financeiro", "Medição",
+        "Fatura", "Comprovante de Pagamento", "Outros Financeiros"
+    ],
+    "Segurança": [
+        "PCMAT", "PPRA", "Treinamento de Segurança",
+        "Relatório de Acidente", "EPI", "Outros Segurança"
+    ],
+    "Qualidade": [
+        "Ensaio de Materiais", "Controle de Qualidade", "Certificado de Conformidade",
+        "Relatório de Inspeção", "Outros Qualidade"
+    ],
+    "Correspondências": [
+        "Ofício", "Comunicação Interna", "E-mail Oficial",
+        "Ata de Reunião", "Outros Correspondências"
+    ]
+}
+
 
 def allowed_file(filename):
     return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
@@ -25,7 +62,7 @@ def allowed_file(filename):
 @token_required
 @obra_access_required
 def download_template(current_user):
-    """Gera e retorna template Excel para importação"""
+    """Gera e retorna template Excel para importação com classificações"""
     try:
         # Buscar dados para o template
         if current_user.role == 'administrador':
@@ -35,7 +72,7 @@ def download_template(current_user):
 
         tipos_registro = TipoRegistro.query.all()
 
-        # Criar DataFrame com exemplo
+        # ✨ Criar DataFrame com exemplo incluindo classificações
         template_data = {
             'titulo': ['Exemplo - Contrato Principal', 'Exemplo - ART do Projeto'],
             'tipo_registro': ['Contrato', 'ART'],
@@ -47,7 +84,10 @@ def download_template(current_user):
                 'Anotação de Responsabilidade Técnica do projeto estrutural'
             ],
             'obra_id': [obras[0].id if obras else 1, obras[0].id if obras else 1],
-            'obra_nome': [obras[0].nome if obras else 'Obra Exemplo', obras[0].nome if obras else 'Obra Exemplo']
+            'obra_nome': [obras[0].nome if obras else 'Obra Exemplo', obras[0].nome if obras else 'Obra Exemplo'],
+            # ✨ NOVAS COLUNAS DE CLASSIFICAÇÃO
+            'classificacao_grupo': ['Contratos', 'Documentos Técnicos'],
+            'classificacao_subgrupo': ['Contrato Principal', 'ART/RRT']
         }
 
         # Criar arquivo Excel
@@ -74,20 +114,36 @@ def download_template(current_user):
             } for tipo in tipos_registro])
             df_tipos.to_excel(writer, sheet_name='Tipos_Registro', index=False)
 
-            # Aba com instruções
+            # ✨ NOVA ABA: Classificações Disponíveis
+            classificacoes_data = []
+            for grupo, subgrupos in CLASSIFICACOES.items():
+                for subgrupo in subgrupos:
+                    classificacoes_data.append({
+                        'grupo': grupo,
+                        'subgrupo': subgrupo
+                    })
+
+            df_classificacoes = pd.DataFrame(classificacoes_data)
+            df_classificacoes.to_excel(
+                writer, sheet_name='Classificações', index=False)
+
+            # ✨ Aba com instruções ATUALIZADA
             instrucoes = pd.DataFrame({
                 'Campo': [
                     'titulo', 'tipo_registro', 'tipo_registro_id', 'data_registro',
-                    'codigo_numero', 'descricao', 'obra_id', 'obra_nome'
+                    'codigo_numero', 'descricao', 'obra_id', 'obra_nome',
+                    'classificacao_grupo', 'classificacao_subgrupo'
                 ],
-                'Obrigatório': ['Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Não'],
+                'Obrigatório': ['Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Não', 'Sim', 'Sim'],
                 'Formato': [
                     'Texto livre', 'Nome do tipo', 'ID numérico', 'YYYY-MM-DD',
-                    'Código único', 'Texto livre', 'ID numérico', 'Apenas referência'
+                    'Código único', 'Texto livre', 'ID numérico', 'Apenas referência',
+                    'Nome do grupo', 'Nome do subgrupo'
                 ],
                 'Exemplo': [
                     'Contrato Principal', 'Contrato', '1', '2024-01-15',
-                    'CONT-001', 'Descrição detalhada...', '1', 'Obra Exemplo'
+                    'CONT-001', 'Descrição detalhada...', '1', 'Obra Exemplo',
+                    'Contratos', 'Contrato Principal'
                 ]
             })
             instrucoes.to_excel(writer, sheet_name='Instruções', index=False)
@@ -109,7 +165,7 @@ def download_template(current_user):
 @token_required
 @obra_access_required
 def processar_planilha(current_user):
-    """Processa planilha e retorna dados para revisão"""
+    """Processa planilha e retorna dados para revisão com classificações"""
     try:
         if 'arquivo' not in request.files:
             return jsonify({'message': 'Nenhum arquivo enviado'}), 400
@@ -130,9 +186,11 @@ def processar_planilha(current_user):
         except Exception as e:
             return jsonify({'message': f'Erro ao ler arquivo: {str(e)}'}), 400
 
-        # Validar colunas obrigatórias
-        colunas_obrigatorias = ['titulo', 'tipo_registro', 'tipo_registro_id',
-                                'data_registro', 'codigo_numero', 'descricao', 'obra_id']
+        # ✨ Validar colunas obrigatórias ATUALIZADAS
+        colunas_obrigatorias = [
+            'titulo', 'tipo_registro', 'tipo_registro_id', 'data_registro',
+            'codigo_numero', 'descricao', 'obra_id', 'classificacao_grupo', 'classificacao_subgrupo'
+        ]
         colunas_faltantes = [
             col for col in colunas_obrigatorias if col not in df.columns]
 
@@ -151,7 +209,7 @@ def processar_planilha(current_user):
             erro_linha = []
 
             try:
-                # Validações básicas
+                # Validações básicas existentes
                 if pd.isna(row['titulo']) or str(row['titulo']).strip() == '':
                     erro_linha.append('Título é obrigatório')
                 else:
@@ -198,6 +256,29 @@ def processar_planilha(current_user):
                         erro_linha.append(
                             'Data inválida (use formato YYYY-MM-DD)')
 
+                # ✨ VALIDAÇÕES DE CLASSIFICAÇÃO
+                if pd.isna(row['classificacao_grupo']) or str(row['classificacao_grupo']).strip() == '':
+                    erro_linha.append('Grupo de classificação é obrigatório')
+                else:
+                    grupo = str(row['classificacao_grupo']).strip()
+                    if grupo not in CLASSIFICACOES:
+                        erro_linha.append(
+                            f'Grupo de classificação "{grupo}" não é válido')
+                    else:
+                        registro['classificacao_grupo'] = grupo
+
+                if pd.isna(row['classificacao_subgrupo']) or str(row['classificacao_subgrupo']).strip() == '':
+                    erro_linha.append(
+                        'Subgrupo de classificação é obrigatório')
+                else:
+                    subgrupo = str(row['classificacao_subgrupo']).strip()
+                    grupo = registro.get('classificacao_grupo')
+                    if grupo and subgrupo not in CLASSIFICACOES.get(grupo, []):
+                        erro_linha.append(
+                            f'Subgrupo "{subgrupo}" não pertence ao grupo "{grupo}"')
+                    else:
+                        registro['classificacao_subgrupo'] = subgrupo
+
                 # Outros campos
                 registro['codigo_numero'] = str(row['codigo_numero']).strip(
                 ) if not pd.isna(row['codigo_numero']) else ''
@@ -239,7 +320,7 @@ def processar_planilha(current_user):
 @token_required
 @obra_access_required
 def finalizar_importacao(current_user):
-    """Finaliza importação criando os registros com anexos"""
+    """Finaliza importação criando os registros com anexos e classificações"""
     try:
         data = request.get_json()
         registros_data = data.get('registros', [])
@@ -260,7 +341,7 @@ def finalizar_importacao(current_user):
                     })
                     continue
 
-                # Criar registro
+                # ✨ Criar registro COM CLASSIFICAÇÕES
                 registro = Registro(
                     titulo=registro_data['titulo'],
                     tipo_registro=registro_data['tipo_registro'],
@@ -275,7 +356,10 @@ def finalizar_importacao(current_user):
                     nome_arquivo_original=registro_data.get(
                         'nome_arquivo_original'),
                     formato_arquivo=registro_data.get('formato_arquivo'),
-                    tamanho_arquivo=registro_data.get('tamanho_arquivo')
+                    tamanho_arquivo=registro_data.get('tamanho_arquivo'),
+                    # ✨ NOVAS CLASSIFICAÇÕES
+                    classificacao_grupo=registro_data['classificacao_grupo'],
+                    classificacao_subgrupo=registro_data['classificacao_subgrupo']
                 )
 
                 db.session.add(registro)

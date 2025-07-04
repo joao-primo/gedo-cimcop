@@ -67,6 +67,13 @@ export const dashboardAPI = {
 export const pesquisaAPI = {
   getFiltros: () => api.get("/pesquisa/filtros"),
   pesquisar: (params) => api.get("/pesquisa/", { params }),
+  exportarExcel: (params) =>
+    api.get("/pesquisa/exportar", {
+      params,
+      responseType: "blob",
+      timeout: 60000,
+    }),
+  visualizar: (id) => api.get(`/pesquisa/visualizar/${id}`),
 }
 
 // APIs de Registros
@@ -202,6 +209,40 @@ export const workflowAPI = {
   criar: (data) => api.post("/workflow/", data),
   atualizar: (id, data) => api.put(`/workflow/${id}`, data),
   deletar: (id) => api.delete(`/workflow/${id}`),
+}
+
+// ✨ NOVAS APIs de Importação em Lote
+export const importacaoAPI = {
+  downloadTemplate: () =>
+    api.get("/importacao/template", {
+      responseType: "blob",
+      timeout: 60000,
+    }),
+  processarPlanilha: (formData) =>
+    api.post("/importacao/processar", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
+    }),
+  uploadAnexo: (formData) =>
+    api.post("/importacao/upload-anexo", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
+    }),
+  finalizarImportacao: (data) =>
+    api.post("/importacao/finalizar", data, {
+      timeout: 120000, // 2 minutos para importações grandes
+    }),
+}
+
+// ✨ NOVAS APIs de Relatórios
+export const relatoriosAPI = {
+  // Placeholder para futuras funcionalidades
+  listar: () => api.get("/relatorios/"),
+  gerar: (tipo, params) =>
+    api.post(`/relatorios/${tipo}`, params, {
+      responseType: "blob",
+      timeout: 120000,
+    }),
 }
 
 // Export da instância principal para casos especiais

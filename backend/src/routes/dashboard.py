@@ -69,6 +69,20 @@ def get_estatisticas(current_user):
         registros_por_tipo = registros_por_tipo.group_by(
             Registro.tipo_registro).all()
 
+        # ✅ NOVO: Registros por classificação
+        registros_por_classificacao = db.session.query(
+            Registro.classificacao_grupo,
+            func.count(Registro.id).label('count')
+        )
+
+        if current_user.role == 'usuario_padrao':
+            registros_por_classificacao = registros_por_classificacao.filter_by(
+                obra_id=current_user.obra_id)
+
+        registros_por_classificacao = registros_por_classificacao.filter(
+            Registro.classificacao_grupo.isnot(None)
+        ).group_by(Registro.classificacao_grupo).all()
+
         # Registros dos últimos 30 dias
         data_limite_30d = datetime.utcnow() - timedelta(days=30)
         registros_ultimos_30d = base_query.filter(
@@ -89,6 +103,11 @@ def get_estatisticas(current_user):
             'registros_por_tipo': [
                 {'tipo': tipo, 'count': count}
                 for tipo, count in registros_por_tipo
+            ],
+            # ✅ NOVO: Estatísticas de classificação
+            'registros_por_classificacao': [
+                {'grupo': grupo, 'count': count}
+                for grupo, count in registros_por_classificacao
             ],
             'registros_por_obra': [
                 {'obra_nome': nome, 'obra_id': obra_id, 'count': count}

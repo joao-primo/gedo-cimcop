@@ -1,322 +1,362 @@
 "use client"
 
-import { useEffect, useState } from "react"
+import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { pesquisaAPI, registrosAPI } from "../services/api"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { pesquisaAPI } from "../services/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Separator } from "@/components/ui/separator"
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle } from "@/components/ui/dialog"
+import { ScrollArea } from "@/components/ui/scroll-area"
 import {
   Search,
+  Filter,
   Download,
-  RefreshCw,
   FileText,
+  Calendar,
+  Building2,
   User,
-  AlertTriangle,
+  RefreshCw,
   ChevronLeft,
   ChevronRight,
-  Trash2,
-  CheckCircle,
+  Eye,
+  FolderTree,
+  FileDown,
+  Loader2,
 } from "lucide-react"
-
-const formatDate = (dateStr) => {
-  if (!dateStr) return "—"
-  try {
-    return new Intl.DateTimeFormat("pt-BR").format(new Date(dateStr))
-  } catch {
-    return "—"
-  }
-}
+import { toast } from "sonner"
 
 const Pesquisa = () => {
   const { user, isAdmin } = useAuth()
-  const [filtros, setFiltros] = useState({
+  const [loading, setLoading] = useState(false)
+  const [loadingFiltros, setLoadingFiltros] = useState(true)
+  const [loadingExportacao, setLoadingExportacao] = useState(false)
+  const [resultados, setResultados] = useState([])
+  const [filtrosDisponiveis, setFiltrosDisponiveis] = useState({
     obras: [],
     tipos_registro: [],
     autores: [],
+    classificacoes_existentes: [],
+    opcoes_ordenacao: [],
   })
-  const [form, setForm] = useState({
-    data_registro_inicio: "",
-    obra_id: "0",
-    tipo_registro_id: "0",
-    palavra_chave: "",
-  })
-  const [registros, setRegistros] = useState([])
-  const [pagination, setPagination] = useState({
+  const [paginacao, setPaginacao] = useState({
     page: 1,
     per_page: 20,
     total: 0,
     pages: 0,
-    has_prev: false,
     has_next: false,
+    has_prev: false,
   })
-  const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
-  const [deletingId, setDeletingId] = useState(null)
-  const [downloadingId, setDownloadingId] = useState(null) // ← ADICIONADO: Estado para download
-  const [successMessage, setSuccessMessage] = useState("")
 
+  // ✅ NOVO: Estado para visualização completa
+  const [registroVisualizacao, setRegistroVisualizacao] = useState(null)
+  const [modalVisualizacaoAberto, setModalVisualizacaoAberto] = useState(false)
+
+  const [filtros, setFiltros] = useState({
+    palavra_chave: "",
+    obra_id: "",
+    tipo_registro_id: "",
+    classificacao_grupo: "", // ✅ NOVO
+    autor_id: "",
+    data_registro_inicio: "",
+    ordenacao: "data_desc",
+  })
+
+  // Carregar filtros disponíveis
   useEffect(() => {
-    console.log("Componente Pesquisa montado, carregando filtros...")
-    fetchFiltros()
-    fetchRegistros()
-  }, [])
+    const carregarFiltros = async () => {
+      try {
+        setLoadingFiltros(true)
+        console.log("Carregando filtros disponíveis...")
 
-  const fetchFiltros = async () => {
-    try {
-      console.log("Buscando filtros...")
-      const response = await pesquisaAPI.getFiltros()
-      console.log("Filtros recebidos:", response.data)
+        const response = await pesquisaAPI.getFiltros()
+        console.log("Filtros carregados:", response.data)
 
-      setFiltros({
-        obras: response.data.obras || [],
-        tipos_registro: response.data.tipos_registro || [],
-        autores: response.data.autores || [],
-      })
-    } catch (err) {
-      console.error("Erro ao buscar filtros:", err)
-      setError("Erro ao carregar filtros de pesquisa")
+        setFiltrosDisponiveis({
+          obras: response.data.obras || [],
+          tipos_registro: response.data.tipos_registro || [],
+          autores: response.data.autores || [],
+          classificacoes_existentes: response.data.classificacoes_existentes || [], // ✅ NOVO
+          opcoes_ordenacao: response.data.opcoes_ordenacao || [
+            { value: "data_desc", label: "Data de Criação (Mais Recente)" },
+            { value: "data_asc", label: "Data de Criação (Mais Antiga)" },
+            { value: "titulo_asc", label: "Título (A-Z)" },
+            { value: "titulo_desc", label: "Título (Z-A)" },
+          ],
+        })
+      } catch (error) {
+        console.error("Erro ao carregar filtros:", error)
+        toast.error("Erro ao carregar filtros de pesquisa")
+      } finally {
+        setLoadingFiltros(false)
+      }
     }
-  }
 
-  const fetchRegistros = async (page = 1) => {
-    setLoading(true)
-    setError("")
+    if (user) {
+      carregarFiltros()
+    }
+  }, [user])
 
+  const realizarPesquisa = async (novaPagina = 1) => {
     try {
-      console.log("Buscando registros com parâmetros:", { ...form, page, per_page: pagination.per_page })
+      setLoading(true)
+      console.log("Realizando pesquisa com filtros:", filtros, "página:", novaPagina)
 
-      const response = await pesquisaAPI.pesquisar({
-        ...form,
-        page,
-        per_page: pagination.per_page,
+      const params = {
+        ...filtros,
+        page: novaPagina,
+        per_page: paginacao.per_page,
+      }
+
+      // Remover parâmetros vazios
+      Object.keys(params).forEach((key) => {
+        if (params[key] === "" || params[key] === null || params[key] === undefined) {
+          delete params[key]
+        }
       })
 
-      console.log("Resposta da pesquisa:", response.data)
+      const response = await pesquisaAPI.pesquisar(params)
+      console.log("Resultados da pesquisa:", response.data)
 
-      setRegistros(response.data.registros || [])
-      setPagination({
-        page: response.data.pagination?.page || 1,
-        per_page: response.data.pagination?.per_page || 20,
-        total: response.data.pagination?.total || 0,
-        pages: response.data.pagination?.pages || 0,
-        has_prev: response.data.pagination?.has_prev || false,
-        has_next: response.data.pagination?.has_next || false,
-      })
-    } catch (err) {
-      console.error("Erro ao buscar registros:", err)
-      setError("Erro ao realizar pesquisa")
-      setRegistros([])
+      setResultados(response.data.registros || [])
+      setPaginacao(
+        response.data.pagination || {
+          page: 1,
+          per_page: 20,
+          total: 0,
+          pages: 0,
+          has_next: false,
+          has_prev: false,
+        },
+      )
+    } catch (error) {
+      console.error("Erro na pesquisa:", error)
+      toast.error("Erro ao realizar pesquisa")
+      setResultados([])
     } finally {
       setLoading(false)
     }
   }
 
-  const handleChange = (name, value) => {
-    console.log("Alterando filtro:", name, "=", value)
-    setForm((prev) => ({ ...prev, [name]: value }))
+  const handleFiltroChange = (campo, valor) => {
+    setFiltros((prev) => ({
+      ...prev,
+      [campo]: valor,
+    }))
   }
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target
-    handleChange(name, value)
+  const handleSubmit = (e) => {
+    e.preventDefault()
+    realizarPesquisa(1)
   }
 
-  const handleClear = () => {
-    console.log("Limpando filtros...")
-    setForm({
-      data_registro_inicio: "",
-      obra_id: "0",
-      tipo_registro_id: "0",
+  const limparFiltros = () => {
+    setFiltros({
       palavra_chave: "",
+      obra_id: "",
+      tipo_registro_id: "",
+      classificacao_grupo: "", // ✅ NOVO
+      autor_id: "",
+      data_registro_inicio: "",
+      ordenacao: "data_desc",
     })
-    fetchRegistros(1)
+    setResultados([])
+    setPaginacao({
+      page: 1,
+      per_page: 20,
+      total: 0,
+      pages: 0,
+      has_next: false,
+      has_prev: false,
+    })
   }
 
-  const handleSearch = () => {
-    console.log("Executando pesquisa...")
-    fetchRegistros(1)
+  const handlePaginacao = (novaPagina) => {
+    realizarPesquisa(novaPagina)
   }
 
-  // ← CORRIGIDO: Usar a API correta para download
-  const handleDownload = async (registroId, nomeArquivo) => {
+  // ✅ NOVO: Função para exportar resultados
+  const exportarResultados = async () => {
     try {
-      setDownloadingId(registroId)
-      setError("")
+      setLoadingExportacao(true)
+      console.log("Iniciando exportação com filtros:", filtros)
 
-      console.log("Baixando arquivo do registro:", registroId)
-
-      // Usar a função da API que já está configurada corretamente
-      const result = await registrosAPI.downloadAnexo(registroId)
-
-      console.log("Download concluído:", result.filename)
-
-      // Mostrar mensagem de sucesso temporária
-      setSuccessMessage(`Arquivo "${result.filename}" baixado com sucesso!`)
-      setTimeout(() => setSuccessMessage(""), 3000)
-    } catch (err) {
-      console.error("Erro ao baixar arquivo:", err)
-      setError(err.message || "Erro ao baixar o arquivo. Tente novamente.")
-    } finally {
-      setDownloadingId(null)
-    }
-  }
-
-  const canDeleteRecord = (registro) => {
-    if (!user) return false
-
-    // Admin pode excluir qualquer registro
-    if (user.role === "administrador") return true
-
-    // Autor pode excluir seus próprios registros
-    if (registro.autor_nome === user.username) return true
-
-    return false
-  }
-
-  const handleDelete = async (registro) => {
-    // Verificar permissões
-    if (!canDeleteRecord(registro)) {
-      setError("Você não tem permissão para excluir este registro.")
-      return
-    }
-
-    // Confirmação dupla
-    const confirmMessage = `Tem certeza que deseja excluir o registro "${registro.titulo}"?\n\nEsta ação não pode ser desfeita!`
-
-    if (!window.confirm(confirmMessage)) {
-      return
-    }
-
-    // Segunda confirmação para registros com anexo
-    if (registro.anexo_url) {
-      const confirmWithAttachment = window.confirm(
-        `ATENÇÃO: Este registro possui um anexo que também será excluído permanentemente.\n\nDeseja realmente continuar?`,
-      )
-      if (!confirmWithAttachment) {
-        return
+      // Preparar dados para exportação (mesmos filtros da pesquisa)
+      const dadosExportacao = {
+        ...filtros,
       }
-    }
 
-    try {
-      setDeletingId(registro.id)
-      setError("")
-      setSuccessMessage("")
+      // Remover campos vazios
+      Object.keys(dadosExportacao).forEach((key) => {
+        if (dadosExportacao[key] === "" || dadosExportacao[key] === null || dadosExportacao[key] === undefined) {
+          delete dadosExportacao[key]
+        }
+      })
 
-      console.log("Excluindo registro:", registro.id)
+      console.log("Dados para exportação:", dadosExportacao)
 
-      await registrosAPI.deletar(registro.id)
+      const response = await pesquisaAPI.exportar(dadosExportacao)
 
-      setSuccessMessage(`Registro "${registro.titulo}" excluído com sucesso!`)
+      // Criar blob e fazer download
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      })
 
-      // Atualizar lista de registros
-      fetchRegistros(pagination.page)
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
 
-      // Limpar mensagem de sucesso após 5 segundos
-      setTimeout(() => {
-        setSuccessMessage("")
-      }, 5000)
-    } catch (err) {
-      console.error("Erro ao excluir registro:", err)
+      // Nome do arquivo com timestamp
+      const timestamp = new Date().toISOString().slice(0, 19).replace(/:/g, "-")
+      link.download = `registros_gedo_cimcop_${timestamp}.xlsx`
 
-      if (err.response?.status === 403) {
-        setError("Você não tem permissão para excluir este registro.")
-      } else if (err.response?.status === 404) {
-        setError("Registro não encontrado.")
+      document.body.appendChild(link)
+      link.click()
+      document.body.removeChild(link)
+      window.URL.revokeObjectURL(url)
+
+      toast.success("Exportação concluída com sucesso!")
+      console.log("Exportação realizada com sucesso")
+    } catch (error) {
+      console.error("Erro na exportação:", error)
+      if (error.response?.status === 404) {
+        toast.error("Nenhum registro encontrado para exportar")
       } else {
-        setError(err.response?.data?.message || "Erro ao excluir registro. Tente novamente.")
+        toast.error("Erro ao exportar resultados")
       }
     } finally {
-      setDeletingId(null)
+      setLoadingExportacao(false)
     }
   }
 
-  const handlePageChange = (newPage) => {
-    console.log("Mudando para página:", newPage)
-    fetchRegistros(newPage)
+  // ✅ NOVO: Função para visualizar registro completo
+  const visualizarRegistro = async (registroId) => {
+    try {
+      console.log("Carregando registro para visualização:", registroId)
+
+      const response = await pesquisaAPI.visualizar(registroId)
+      console.log("Registro carregado:", response.data)
+
+      setRegistroVisualizacao(response.data.registro)
+      setModalVisualizacaoAberto(true)
+    } catch (error) {
+      console.error("Erro ao carregar registro:", error)
+      toast.error("Erro ao carregar detalhes do registro")
+    }
   }
 
-  // Se não há usuário, mostrar loading
-  if (!user) {
+  const formatarData = (dateString) => {
+    try {
+      return new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+      }).format(new Date(dateString))
+    } catch {
+      return "Data inválida"
+    }
+  }
+
+  const formatarDataHora = (dateString) => {
+    try {
+      return new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(dateString))
+    } catch {
+      return "Data inválida"
+    }
+  }
+
+  if (loadingFiltros) {
     return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando...</p>
+      <div className="space-y-6">
+        <div className="flex items-center justify-center py-12">
+          <div className="flex items-center gap-2">
+            <div className="animate-spin rounded-full h-6 w-6 border-b-2 border-blue-600"></div>
+            <span>Carregando filtros de pesquisa...</span>
+          </div>
         </div>
       </div>
     )
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
-          <div>
-            <h2 className="text-3xl font-bold text-gray-800">Pesquisa Avançada</h2>
-            <p className="text-gray-600 mt-1">Encontre registros usando filtros personalizados</p>
-          </div>
-          <Button onClick={fetchFiltros} variant="outline" size="sm">
-            <RefreshCw className="h-4 w-4 mr-2" />
-            Atualizar Filtros
-          </Button>
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex justify-between items-center">
+        <div>
+          <h1 className="text-3xl font-bold text-gray-900">Pesquisa Avançada</h1>
+          <p className="text-gray-600">Encontre registros usando filtros específicos</p>
         </div>
-
-        {successMessage && (
-          <Alert className="mb-6 border-green-200 bg-green-50">
-            <CheckCircle className="h-4 w-4 text-green-600" />
-            <AlertDescription className="text-green-700">{successMessage}</AlertDescription>
-          </Alert>
+        {/* ✅ NOVO: Botão de Exportação */}
+        {resultados.length > 0 && (
+          <Button
+            onClick={exportarResultados}
+            disabled={loadingExportacao}
+            variant="outline"
+            className="flex items-center gap-2 bg-transparent"
+          >
+            {loadingExportacao ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+                Exportando...
+              </>
+            ) : (
+              <>
+                <FileDown className="h-4 w-4" />
+                Exportar Excel
+              </>
+            )}
+          </Button>
         )}
+      </div>
 
-        {error && (
-          <Alert className="mb-6 border-red-200 bg-red-50">
-            <AlertTriangle className="h-4 w-4 text-red-600" />
-            <AlertDescription className="text-red-700">{error}</AlertDescription>
-          </Alert>
-        )}
-
-        {/* Filtros */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Search className="h-5 w-5 mr-2" />
-              Filtros de Pesquisa
-            </CardTitle>
-            <CardDescription>Use os filtros abaixo para refinar sua pesquisa</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* ← MODIFICADO: Primeira linha com Data, Obra e Tipo de Registro */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-4">
-              <div>
-                <Label htmlFor="data_registro_inicio">Data do Registro</Label>
+      {/* Formulário de Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Filter className="h-5 w-5 text-blue-600" />
+            Filtros de Pesquisa
+          </CardTitle>
+          <CardDescription>Use os filtros abaixo para refinar sua pesquisa</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <form onSubmit={handleSubmit} className="space-y-4">
+            {/* Primeira linha de filtros */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="palavra_chave">Palavra-chave</Label>
                 <Input
-                  id="data_registro_inicio"
-                  type="date"
-                  name="data_registro_inicio"
-                  value={form.data_registro_inicio}
-                  onChange={handleInputChange}
-                  className="mt-1"
+                  id="palavra_chave"
+                  value={filtros.palavra_chave}
+                  onChange={(e) => handleFiltroChange("palavra_chave", e.target.value)}
+                  placeholder="Buscar em título e descrição..."
                 />
               </div>
 
               {isAdmin() && (
-                <div>
+                <div className="space-y-2">
                   <Label htmlFor="obra_id">Obra</Label>
-                  <Select value={form.obra_id} onValueChange={(value) => handleChange("obra_id", value)}>
-                    <SelectTrigger className="mt-1">
+                  <Select value={filtros.obra_id} onValueChange={(value) => handleFiltroChange("obra_id", value)}>
+                    <SelectTrigger>
                       <SelectValue placeholder="Todas as obras" />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="0">Todas as obras</SelectItem>
-                      {filtros.obras.map((obra) => (
+                      <SelectItem value="all">Todas as obras</SelectItem>
+                      {filtrosDisponiveis.obras.map((obra) => (
                         <SelectItem key={obra.id} value={obra.id.toString()}>
-                          {obra.nome}
+                          <div className="flex items-center gap-2">
+                            <Building2 className="h-4 w-4" />
+                            {obra.nome}
+                          </div>
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -324,18 +364,18 @@ const Pesquisa = () => {
                 </div>
               )}
 
-              <div>
+              <div className="space-y-2">
                 <Label htmlFor="tipo_registro_id">Tipo de Registro</Label>
                 <Select
-                  value={form.tipo_registro_id}
-                  onValueChange={(value) => handleChange("tipo_registro_id", value)}
+                  value={filtros.tipo_registro_id}
+                  onValueChange={(value) => handleFiltroChange("tipo_registro_id", value)}
                 >
-                  <SelectTrigger className="mt-1">
+                  <SelectTrigger>
                     <SelectValue placeholder="Todos os tipos" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="0">Todos os tipos</SelectItem>
-                    {filtros.tipos_registro.map((tipo) => (
+                    <SelectItem value="all">Todos os tipos</SelectItem>
+                    {filtrosDisponiveis.tipos_registro.map((tipo) => (
                       <SelectItem key={tipo.id} value={tipo.id.toString()}>
                         {tipo.nome}
                       </SelectItem>
@@ -345,196 +385,415 @@ const Pesquisa = () => {
               </div>
             </div>
 
-            {/* ← NOVO: Segunda linha só com Palavra-chave */}
-            <div className="mb-6">
-              <div>
-                <Label htmlFor="palavra_chave">Palavra-chave</Label>
+            {/* Segunda linha de filtros */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              {/* ✅ NOVO: Filtro por Classificação */}
+              <div className="space-y-2">
+                <Label htmlFor="classificacao_grupo">Classificação</Label>
+                <Select
+                  value={filtros.classificacao_grupo}
+                  onValueChange={(value) => handleFiltroChange("classificacao_grupo", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todas as classificações" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as classificações</SelectItem>
+                    {filtrosDisponiveis.classificacoes_existentes.map((classificacao) => (
+                      <SelectItem key={classificacao} value={classificacao}>
+                        <div className="flex items-center gap-2">
+                          <FolderTree className="h-4 w-4" />
+                          {classificacao}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="autor_id">Autor</Label>
+                <Select value={filtros.autor_id} onValueChange={(value) => handleFiltroChange("autor_id", value)}>
+                  <SelectTrigger>
+                    <SelectValue placeholder="Todos os autores" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os autores</SelectItem>
+                    {filtrosDisponiveis.autores.map((autor) => (
+                      <SelectItem key={autor.id} value={autor.id.toString()}>
+                        <div className="flex items-center gap-2">
+                          <User className="h-4 w-4" />
+                          {autor.username}
+                        </div>
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="space-y-2">
+                <Label htmlFor="data_registro_inicio">Data do Registro</Label>
                 <Input
-                  id="palavra_chave"
-                  type="text"
-                  name="palavra_chave"
-                  value={form.palavra_chave}
-                  onChange={handleInputChange}
-                  placeholder="Busque por título, descrição..."
-                  className="mt-1"
+                  id="data_registro_inicio"
+                  type="date"
+                  value={filtros.data_registro_inicio}
+                  onChange={(e) => handleFiltroChange("data_registro_inicio", e.target.value)}
                 />
               </div>
             </div>
 
-            {/* ← MANTIDO: Botões de ação logo embaixo da palavra-chave */}
-            <div className="flex gap-3">
-              <Button onClick={handleSearch} disabled={loading}>
-                {loading ? <RefreshCw className="w-4 h-4 mr-2 animate-spin" /> : <Search className="w-4 h-4 mr-2" />}
-                Pesquisar
+            {/* Terceira linha - Ordenação */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="ordenacao">Ordenação</Label>
+                <Select value={filtros.ordenacao} onValueChange={(value) => handleFiltroChange("ordenacao", value)}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {filtrosDisponiveis.opcoes_ordenacao.map((opcao) => (
+                      <SelectItem key={opcao.value} value={opcao.value}>
+                        {opcao.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
+            {/* Botões */}
+            <div className="flex justify-between items-center pt-4">
+              <Button type="button" variant="outline" onClick={limparFiltros}>
+                <RefreshCw className="h-4 w-4 mr-2" />
+                Limpar Filtros
               </Button>
 
-              <Button onClick={handleClear} variant="outline" disabled={loading}>
-                <RefreshCw className="w-4 h-4 mr-2" />
-                Limpar
+              <Button type="submit" disabled={loading} className="min-w-32">
+                {loading ? (
+                  <div className="flex items-center gap-2">
+                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div>
+                    Pesquisando...
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <Search className="h-4 w-4" />
+                    Pesquisar
+                  </div>
+                )}
               </Button>
             </div>
-          </CardContent>
-        </Card>
+          </form>
+        </CardContent>
+      </Card>
 
-        {/* Resultados */}
+      {/* Resultados */}
+      {resultados.length > 0 && (
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center justify-between">
-              <span className="flex items-center">
-                <FileText className="h-5 w-5 mr-2" />
-                Resultados da Pesquisa
-              </span>
-              {pagination.total > 0 && (
-                <Badge variant="secondary">
-                  {pagination.total} registro{pagination.total !== 1 ? "s" : ""} encontrado
-                  {pagination.total !== 1 ? "s" : ""}
-                </Badge>
-              )}
-            </CardTitle>
+            <div className="flex justify-between items-center">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <FileText className="h-5 w-5 text-blue-600" />
+                  Resultados da Pesquisa
+                </CardTitle>
+                <CardDescription>{paginacao.total} registro(s) encontrado(s)</CardDescription>
+              </div>
+              {/* ✅ NOVO: Botão de exportação também no header dos resultados */}
+              <Button onClick={exportarResultados} disabled={loadingExportacao} size="sm" variant="outline">
+                {loadingExportacao ? (
+                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                ) : (
+                  <Download className="h-4 w-4 mr-2" />
+                )}
+                Exportar
+              </Button>
+            </div>
           </CardHeader>
           <CardContent>
-            {loading ? (
-              <div className="flex justify-center items-center py-12">
-                <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                <span className="ml-3 text-gray-600">Carregando...</span>
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead className="w-32">Data</TableHead>
-                      {isAdmin() && <TableHead>Obra</TableHead>}
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Título</TableHead>
-                      <TableHead>Autor</TableHead>
-                      <TableHead className="w-80">Descrição</TableHead>
-                      <TableHead className="w-40 text-center">Ações</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {registros.length === 0 ? (
-                      <TableRow>
-                        <TableCell colSpan={isAdmin() ? 7 : 6} className="text-center py-12">
-                          <div className="flex flex-col items-center text-gray-500">
-                            <FileText className="w-12 h-12 text-gray-300 mb-4" />
-                            <p className="text-lg font-medium">Nenhum registro encontrado</p>
-                            <p className="text-sm">Tente ajustar os filtros de pesquisa</p>
-                          </div>
-                        </TableCell>
-                      </TableRow>
-                    ) : (
-                      registros.map((registro) => (
-                        <TableRow key={registro.id} className="hover:bg-gray-50">
-                          <TableCell className="font-medium">{formatDate(registro.data_registro)}</TableCell>
-                          {isAdmin() && (
-                            <TableCell>
-                              <Badge variant="outline">{registro.obra_nome || "—"}</Badge>
-                            </TableCell>
-                          )}
-                          <TableCell>
-                            <Badge variant="secondary">{registro.tipo_registro_nome || "—"}</Badge>
-                          </TableCell>
-                          <TableCell className="font-medium">{registro.titulo}</TableCell>
-                          <TableCell>
-                            <div className="flex items-center">
-                              <User className="h-3 w-3 mr-1 text-gray-400" />
-                              {registro.autor_nome || "—"}
-                            </div>
-                          </TableCell>
-                          <TableCell className="max-w-xs">
-                            <div className="truncate" title={registro.descricao}>
-                              {registro.descricao || "—"}
-                            </div>
-                          </TableCell>
-                          {/* ← MELHORADO: Layout dos botões mais bonito */}
-                          <TableCell className="text-center">
-                            <div className="flex items-center justify-center gap-1">
-                              {/* Botão de Download - Melhorado */}
-                              {registro.anexo_url ? (
-                                <Button
-                                  onClick={() => handleDownload(registro.id, registro.nome_arquivo_original)}
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={downloadingId === registro.id}
-                                  className="h-8 w-8 p-0 text-blue-600 hover:text-blue-700 hover:bg-blue-50 transition-colors"
-                                  title={`Baixar anexo: ${registro.nome_arquivo_original || "arquivo"}`}
-                                >
-                                  {downloadingId === registro.id ? (
-                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Download className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              ) : (
-                                <div className="h-8 w-8"></div> // Espaço para manter alinhamento
-                              )}
+            <div className="space-y-4">
+              {resultados.map((registro) => (
+                <div key={registro.id} className="border rounded-lg p-4 hover:bg-gray-50 transition-colors">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center gap-2 mb-2">
+                        <h3 className="font-semibold text-lg">{registro.titulo}</h3>
+                        <Badge variant="secondary">{registro.tipo_registro}</Badge>
+                        {registro.tem_anexo && (
+                          <Badge variant="outline" className="text-blue-600">
+                            <FileText className="h-3 w-3 mr-1" />
+                            Anexo
+                          </Badge>
+                        )}
+                      </div>
 
-                              {/* Botão de Excluir - Melhorado */}
-                              {canDeleteRecord(registro) && (
-                                <Button
-                                  onClick={() => handleDelete(registro)}
-                                  size="sm"
-                                  variant="ghost"
-                                  disabled={deletingId === registro.id}
-                                  className="h-8 w-8 p-0 text-red-600 hover:text-red-700 hover:bg-red-50 transition-colors"
-                                  title={`Excluir registro: ${registro.titulo}`}
-                                >
-                                  {deletingId === registro.id ? (
-                                    <RefreshCw className="h-4 w-4 animate-spin" />
-                                  ) : (
-                                    <Trash2 className="h-4 w-4" />
-                                  )}
-                                </Button>
-                              )}
-                            </div>
-                          </TableCell>
-                        </TableRow>
-                      ))
-                    )}
-                  </TableBody>
-                </Table>
-              </div>
-            )}
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4 text-sm text-gray-600 mb-3">
+                        <div className="flex items-center gap-1">
+                          <Calendar className="h-4 w-4" />
+                          {formatarData(registro.data_registro)}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <User className="h-4 w-4" />
+                          {registro.autor_nome}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          <Building2 className="h-4 w-4" />
+                          {registro.obra_nome}
+                        </div>
+                        {/* ✅ NOVO: Mostrar classificação na listagem */}
+                        {registro.classificacao_completa && (
+                          <div className="flex items-center gap-1">
+                            <FolderTree className="h-4 w-4" />
+                            <span className="truncate" title={registro.classificacao_completa}>
+                              {registro.classificacao_completa}
+                            </span>
+                          </div>
+                        )}
+                      </div>
+
+                      {registro.descricao && (
+                        <p className="text-gray-700 text-sm line-clamp-2 mb-2">{registro.descricao}</p>
+                      )}
+
+                      {registro.codigo_numero && (
+                        <div className="text-xs text-gray-500">Código: {registro.codigo_numero}</div>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 ml-4">
+                      {/* ✅ NOVO: Botão de Visualização */}
+                      <Button size="sm" variant="outline" onClick={() => visualizarRegistro(registro.id)}>
+                        <Eye className="h-4 w-4 mr-1" />
+                        Ver
+                      </Button>
+
+                      {registro.tem_anexo && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => window.open(`/api/pesquisa/${registro.id}/download`, "_blank")}
+                        >
+                          <Download className="h-4 w-4 mr-1" />
+                          Baixar
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
 
             {/* Paginação */}
-            {pagination.pages > 1 && (
-              <div className="flex items-center justify-between mt-6 pt-4 border-t">
-                <div className="text-sm text-gray-700">
-                  Mostrando <span className="font-medium">{(pagination.page - 1) * pagination.per_page + 1}</span> até{" "}
-                  <span className="font-medium">
-                    {Math.min(pagination.page * pagination.per_page, pagination.total)}
-                  </span>{" "}
-                  de <span className="font-medium">{pagination.total}</span> resultados
+            {paginacao.pages > 1 && (
+              <div className="flex justify-between items-center mt-6 pt-4 border-t">
+                <div className="text-sm text-gray-600">
+                  Página {paginacao.page} de {paginacao.pages}({paginacao.total} registros)
                 </div>
-                <div className="flex items-center space-x-2">
+
+                <div className="flex items-center gap-2">
                   <Button
-                    onClick={() => handlePageChange(pagination.page - 1)}
-                    disabled={!pagination.has_prev || loading}
                     variant="outline"
                     size="sm"
+                    onClick={() => handlePaginacao(paginacao.page - 1)}
+                    disabled={!paginacao.has_prev || loading}
                   >
-                    <ChevronLeft className="h-4 w-4 mr-1" />
+                    <ChevronLeft className="h-4 w-4" />
                     Anterior
                   </Button>
-                  <span className="text-sm text-gray-600">
-                    Página {pagination.page} de {pagination.pages}
-                  </span>
+
+                  <div className="flex items-center gap-1">
+                    {Array.from({ length: Math.min(5, paginacao.pages) }, (_, i) => {
+                      const pageNum = Math.max(1, paginacao.page - 2) + i
+                      if (pageNum > paginacao.pages) return null
+
+                      return (
+                        <Button
+                          key={pageNum}
+                          variant={pageNum === paginacao.page ? "default" : "outline"}
+                          size="sm"
+                          onClick={() => handlePaginacao(pageNum)}
+                          disabled={loading}
+                          className="w-8 h-8 p-0"
+                        >
+                          {pageNum}
+                        </Button>
+                      )
+                    })}
+                  </div>
+
                   <Button
-                    onClick={() => handlePageChange(pagination.page + 1)}
-                    disabled={!pagination.has_next || loading}
                     variant="outline"
                     size="sm"
+                    onClick={() => handlePaginacao(paginacao.page + 1)}
+                    disabled={!paginacao.has_next || loading}
                   >
-                    Próximo
-                    <ChevronRight className="h-4 w-4 ml-1" />
+                    Próxima
+                    <ChevronRight className="h-4 w-4" />
                   </Button>
                 </div>
               </div>
             )}
           </CardContent>
         </Card>
-      </div>
+      )}
+
+      {/* Estado vazio */}
+      {!loading && resultados.length === 0 && paginacao.total === 0 && (
+        <Card>
+          <CardContent className="text-center py-12">
+            <Search className="h-12 w-12 mx-auto mb-4 text-gray-400" />
+            <h3 className="text-lg font-semibold text-gray-900 mb-2">Nenhum resultado encontrado</h3>
+            <p className="text-gray-600 mb-4">Tente ajustar os filtros de pesquisa ou usar termos diferentes</p>
+            <Button variant="outline" onClick={limparFiltros}>
+              <RefreshCw className="h-4 w-4 mr-2" />
+              Limpar Filtros
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* ✅ NOVO: Modal de Visualização Completa */}
+      <Dialog open={modalVisualizacaoAberto} onOpenChange={setModalVisualizacaoAberto}>
+        <DialogContent className="max-w-4xl max-h-[90vh]">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <FileText className="h-5 w-5 text-blue-600" />
+              Visualização Completa do Registro
+            </DialogTitle>
+            <DialogDescription>Detalhes completos do registro selecionado</DialogDescription>
+          </DialogHeader>
+
+          {registroVisualizacao && (
+            <ScrollArea className="max-h-[70vh] pr-4">
+              <div className="space-y-6">
+                {/* Informações Principais */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Título</Label>
+                    <p className="text-lg font-semibold">{registroVisualizacao.titulo}</p>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Tipo de Registro</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Badge variant="secondary">{registroVisualizacao.tipo_registro}</Badge>
+                    </div>
+                  </div>
+                </div>
+
+                {/* ✅ NOVO: Classificação na visualização */}
+                {registroVisualizacao.classificacao_completa && (
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Classificação</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <FolderTree className="h-4 w-4 text-emerald-600" />
+                      <span className="text-emerald-700 font-medium">
+                        {registroVisualizacao.classificacao_completa}
+                      </span>
+                    </div>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Detalhes */}
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Data do Registro</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Calendar className="h-4 w-4 text-gray-500" />
+                      {formatarData(registroVisualizacao.data_registro)}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Autor</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <User className="h-4 w-4 text-gray-500" />
+                      {registroVisualizacao.autor_nome}
+                    </div>
+                  </div>
+
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Obra</Label>
+                    <div className="flex items-center gap-2 mt-1">
+                      <Building2 className="h-4 w-4 text-gray-500" />
+                      {registroVisualizacao.obra_nome}
+                    </div>
+                  </div>
+                </div>
+
+                {registroVisualizacao.codigo_numero && (
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Código/Número</Label>
+                    <p className="mt-1 font-mono text-sm bg-gray-100 px-2 py-1 rounded">
+                      {registroVisualizacao.codigo_numero}
+                    </p>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Descrição */}
+                <div>
+                  <Label className="text-sm font-medium text-gray-600">Descrição</Label>
+                  <div className="mt-2 p-4 bg-gray-50 rounded-lg">
+                    <p className="text-gray-800 whitespace-pre-wrap">{registroVisualizacao.descricao}</p>
+                  </div>
+                </div>
+
+                {/* Anexo */}
+                {registroVisualizacao.tem_anexo && (
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Anexo</Label>
+                    <div className="mt-2 p-4 border border-gray-200 rounded-lg">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <FileText className="h-5 w-5 text-blue-600" />
+                          <div>
+                            <p className="font-medium">
+                              {registroVisualizacao.nome_arquivo_original || "Arquivo anexo"}
+                            </p>
+                            {registroVisualizacao.formato_arquivo && (
+                              <p className="text-sm text-gray-500">
+                                Formato: {registroVisualizacao.formato_arquivo.toUpperCase()}
+                              </p>
+                            )}
+                          </div>
+                        </div>
+                        <Button
+                          size="sm"
+                          onClick={() => window.open(`/api/pesquisa/${registroVisualizacao.id}/download`, "_blank")}
+                        >
+                          <Download className="h-4 w-4 mr-2" />
+                          Baixar
+                        </Button>
+                      </div>
+                    </div>
+                  </div>
+                )}
+
+                <Separator />
+
+                {/* Metadados */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm text-gray-600">
+                  <div>
+                    <Label className="text-sm font-medium text-gray-600">Criado em</Label>
+                    <p className="mt-1">{formatarDataHora(registroVisualizacao.created_at)}</p>
+                  </div>
+
+                  {registroVisualizacao.updated_at &&
+                    registroVisualizacao.updated_at !== registroVisualizacao.created_at && (
+                      <div>
+                        <Label className="text-sm font-medium text-gray-600">Atualizado em</Label>
+                        <p className="mt-1">{formatarDataHora(registroVisualizacao.updated_at)}</p>
+                      </div>
+                    )}
+                </div>
+              </div>
+            </ScrollArea>
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   )
 }
