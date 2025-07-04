@@ -2,11 +2,12 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { dashboardAPI } from "../services/api"
+import { dashboardAPI, obrasAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
   FileText,
   TrendingUp,
@@ -16,10 +17,10 @@ import {
   User,
   Calendar,
   BarChart3,
-  PieChart,
   Activity,
   Target,
   AlertTriangle,
+  Filter,
 } from "lucide-react"
 import {
   Chart as ChartJS,
@@ -33,7 +34,7 @@ import {
   PointElement,
   LineElement,
 } from "chart.js"
-import { Bar, Pie, Line } from "react-chartjs-2"
+import { Bar, Line } from "react-chartjs-2"
 
 // Registrar componentes do Chart.js
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PointElement, LineElement)
@@ -47,11 +48,27 @@ const Dashboard = () => {
     loading: true,
     error: "",
   })
+  const [obras, setObras] = useState([])
+  const [obraSelecionada, setObraSelecionada] = useState("todas")
 
-  const carregarDados = async () => {
+  const carregarObras = async () => {
+    if (isAdmin()) {
+      try {
+        const response = await obrasAPI.listar()
+        setObras(response.data || [])
+      } catch (error) {
+        console.error("Erro ao carregar obras:", error)
+      }
+    }
+  }
+
+  const carregarDados = async (obraId = null) => {
     try {
-      console.log("Carregando dados do dashboard...")
+      console.log("Carregando dados do dashboard...", obraId ? `para obra ${obraId}` : "todas as obras")
       setDados((prev) => ({ ...prev, loading: true, error: "" }))
+
+      // Preparar parâmetros para as APIs
+      const timelineParams = obraId ? `30&obra_id=${obraId}` : "30"
 
       // Carregar dados em paralelo
       const promises = [
@@ -63,7 +80,7 @@ const Dashboard = () => {
           console.error("Erro ao carregar atividades:", err)
           return { data: { atividades_recentes: [] } }
         }),
-        dashboardAPI.getTimeline(30).catch((err) => {
+        dashboardAPI.getTimeline(timelineParams).catch((err) => {
           console.error("Erro ao carregar timeline:", err)
           return { data: { timeline: [] } }
         }),
@@ -71,14 +88,29 @@ const Dashboard = () => {
 
       const [estatisticasRes, atividadesRes, timelineRes] = await Promise.all(promises)
 
+      // Filtrar estatísticas por obra se necessário
+      let estatisticasFiltradas = estatisticasRes.data || {}
+      if (obraId && estatisticasFiltradas.registros_por_obra) {
+        const obraEspecifica = estatisticasFiltradas.registros_por_obra.find(
+          (obra) => obra.obra_id === Number.parseInt(obraId),
+        )
+        if (obraEspecifica) {
+          // Para obra específica, ajustar os totais
+          estatisticasFiltradas = {
+            ...estatisticasFiltradas,
+            total_registros_obra_selecionada: obraEspecifica.count,
+          }
+        }
+      }
+
       console.log("Dados carregados:", {
-        estatisticas: estatisticasRes.data,
+        estatisticas: estatisticasFiltradas,
         atividades: atividadesRes.data.atividades_recentes,
         timeline: timelineRes.data.timeline,
       })
 
       setDados({
-        estatisticas: estatisticasRes.data || {},
+        estatisticas: estatisticasFiltradas,
         atividades: atividadesRes.data.atividades_recentes || [],
         timeline: timelineRes.data.timeline || [],
         loading: false,
@@ -97,9 +129,16 @@ const Dashboard = () => {
   useEffect(() => {
     if (user) {
       console.log("Usuário logado, carregando dashboard para:", user)
+      carregarObras()
       carregarDados()
     }
   }, [user])
+
+  const handleObraChange = (value) => {
+    setObraSelecionada(value)
+    const obraId = value === "todas" ? null : value
+    carregarDados(obraId)
+  }
 
   // Configurações dos gráficos
   const graficoTiposConfig = {
@@ -109,20 +148,59 @@ const Dashboard = () => {
         {
           label: "Registros",
           data: dados.estatisticas.registros_por_tipo?.map((item) => item.count) || [],
-          backgroundColor: ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#84CC16", "#F97316"],
+          backgroundColor: [
+            "#3B82F6",
+            "#10B981",
+            "#F59E0B",
+            "#EF4444",
+            "#8B5CF6",
+            "#06B6D4",
+            "#84CC16",
+            "#F97316",
+            "#EC4899",
+            "#6366F1",
+            "#14B8A6",
+            "#F59E0B",
+            "#EF4444",
+            "#8B5CF6",
+            "#06B6D4",
+            "#84CC16",
+            "#F97316",
+            "#EC4899",
+            "#6366F1",
+            "#14B8A6",
+            "#F59E0B",
+          ],
           borderWidth: 0,
+          borderRadius: 4,
         },
       ],
     },
     options: {
+      indexAxis: "y", // Gráfico horizontal
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          position: "bottom",
+          display: false, // Ocultar legenda para economizar espaço
         },
         title: {
           display: false,
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+          },
+        },
+        y: {
+          ticks: {
+            font: {
+              size: 11,
+            },
+          },
         },
       },
     },
@@ -130,7 +208,11 @@ const Dashboard = () => {
 
   const graficoTimelineConfig = {
     data: {
-      labels: dados.timeline?.map((item) => new Date(item.data).toLocaleDateString("pt-BR")) || [],
+      labels:
+        dados.timeline?.map((item) => {
+          const date = new Date(item.data)
+          return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+        }) || [],
       datasets: [
         {
           label: "Registros por Dia",
@@ -139,6 +221,10 @@ const Dashboard = () => {
           backgroundColor: "rgba(59, 130, 246, 0.1)",
           tension: 0.4,
           fill: true,
+          pointBackgroundColor: "#3B82F6",
+          pointBorderColor: "#ffffff",
+          pointBorderWidth: 2,
+          pointRadius: 4,
         },
       ],
     },
@@ -149,12 +235,31 @@ const Dashboard = () => {
         legend: {
           display: false,
         },
+        tooltip: {
+          callbacks: {
+            title: (context) => {
+              const index = context[0].dataIndex
+              const date = new Date(dados.timeline[index].data)
+              return date.toLocaleDateString("pt-BR", {
+                weekday: "long",
+                day: "2-digit",
+                month: "long",
+                year: "numeric",
+              })
+            },
+          },
+        },
       },
       scales: {
         y: {
           beginAtZero: true,
           ticks: {
             stepSize: 1,
+          },
+        },
+        x: {
+          ticks: {
+            maxRotation: 45,
           },
         },
       },
@@ -169,7 +274,8 @@ const Dashboard = () => {
           label: "Registros por Obra",
           data: dados.estatisticas.registros_por_obra?.map((item) => item.count) || [],
           backgroundColor: "#10B981",
-          borderRadius: 8,
+          borderRadius: 6,
+          borderSkipped: false,
         },
       ],
     },
@@ -180,12 +286,25 @@ const Dashboard = () => {
         legend: {
           display: false,
         },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.parsed.y} registros`,
+          },
+        },
       },
       scales: {
         y: {
           beginAtZero: true,
           ticks: {
             stepSize: 1,
+          },
+        },
+        x: {
+          ticks: {
+            maxRotation: 45,
+            font: {
+              size: 11,
+            },
           },
         },
       },
@@ -260,10 +379,35 @@ const Dashboard = () => {
             )}
           </p>
         </div>
-        <Button onClick={carregarDados} variant="outline" size="sm">
-          <RefreshCw className="h-4 w-4 mr-2" />
-          Atualizar
-        </Button>
+        <div className="flex items-center gap-3">
+          {/* Filtro por Obra (apenas para admin) */}
+          {isAdmin() && obras.length > 0 && (
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-gray-500" />
+              <Select value={obraSelecionada} onValueChange={handleObraChange}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder="Filtrar por obra" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as obras</SelectItem>
+                  {obras.map((obra) => (
+                    <SelectItem key={obra.id} value={obra.id.toString()}>
+                      {obra.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <Button
+            onClick={() => carregarDados(obraSelecionada === "todas" ? null : obraSelecionada)}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
       {dados.error && (
@@ -283,8 +427,14 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-900">{dados.estatisticas.total_registros || 0}</div>
-            <p className="text-xs text-gray-500 mt-1">Todos os registros</p>
+            <div className="text-3xl font-bold text-gray-900">
+              {obraSelecionada !== "todas" && dados.estatisticas.total_registros_obra_selecionada !== undefined
+                ? dados.estatisticas.total_registros_obra_selecionada
+                : dados.estatisticas.total_registros || 0}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {obraSelecionada !== "todas" ? "Registros da obra selecionada" : "Todos os registros"}
+            </p>
           </CardContent>
         </Card>
 
@@ -341,15 +491,20 @@ const Dashboard = () => {
               <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
               Atividade dos Últimos 30 Dias
             </CardTitle>
-            <CardDescription>Registros criados por dia</CardDescription>
+            <CardDescription>
+              Registros criados por dia
+              {obraSelecionada !== "todas" && (
+                <span className="ml-2 text-blue-600">• Filtrado por obra selecionada</span>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent>
             {dados.timeline?.length > 0 ? (
-              <div className="h-64">
+              <div className="h-80">
                 <Line {...graficoTimelineConfig} />
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
+              <div className="h-80 flex items-center justify-center text-gray-500">
                 <div className="text-center">
                   <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
                   <p>Nenhum dado disponível</p>
@@ -359,24 +514,24 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico de Tipos */}
+        {/* Gráfico de Tipos - Agora Horizontal */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <PieChart className="h-5 w-5 mr-2 text-green-600" />
+              <BarChart3 className="h-5 w-5 mr-2 text-green-600" />
               Distribuição por Tipo
             </CardTitle>
             <CardDescription>Registros por tipo de documento</CardDescription>
           </CardHeader>
           <CardContent>
             {dados.estatisticas.registros_por_tipo?.length > 0 ? (
-              <div className="h-64">
-                <Pie {...graficoTiposConfig} />
+              <div className="h-96">
+                <Bar {...graficoTiposConfig} />
               </div>
             ) : (
-              <div className="h-64 flex items-center justify-center text-gray-500">
+              <div className="h-96 flex items-center justify-center text-gray-500">
                 <div className="text-center">
-                  <PieChart className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
                   <p>Nenhum dado disponível</p>
                 </div>
               </div>
@@ -385,8 +540,8 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Gráfico de Obras (apenas admin) */}
-      {isAdmin() && dados.estatisticas.registros_por_obra?.length > 0 && (
+      {/* Gráfico de Obras (apenas admin e quando não há filtro específico) */}
+      {isAdmin() && obraSelecionada === "todas" && dados.estatisticas.registros_por_obra?.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -396,7 +551,7 @@ const Dashboard = () => {
             <CardDescription>Distribuição de registros entre as obras</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
+            <div className="h-80">
               <Bar {...graficoObrasConfig} />
             </div>
           </CardContent>
@@ -410,7 +565,10 @@ const Dashboard = () => {
             <Clock className="h-5 w-5 mr-2 text-blue-600" />
             Atividades Recentes
           </CardTitle>
-          <CardDescription>Últimos registros criados no sistema</CardDescription>
+          <CardDescription>
+            Últimos registros criados no sistema
+            {obraSelecionada !== "todas" && <span className="ml-2 text-blue-600">• Filtrado por obra selecionada</span>}
+          </CardDescription>
         </CardHeader>
         <CardContent>
           {dados.atividades.length === 0 ? (
