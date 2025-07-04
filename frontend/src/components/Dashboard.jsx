@@ -59,7 +59,8 @@ const Dashboard = () => {
         console.log("Carregando obras para filtro...")
         const response = await obrasAPI.listar()
         console.log("Obras carregadas:", response.data)
-        setObras(response.data || [])
+        // Garantir que sempre seja um array
+        setObras(Array.isArray(response.data) ? response.data : [])
       } catch (error) {
         console.error("Erro ao carregar obras:", error)
         setObras([])
@@ -84,7 +85,6 @@ const Dashboard = () => {
           return { data: {} }
         }),
         dashboardAPI.getAtividadesRecentes(5).catch((err) => {
-          // Mudou de 8 para 5
           console.error("Erro ao carregar atividades:", err)
           return { data: { atividades_recentes: [] } }
         }),
@@ -103,7 +103,6 @@ const Dashboard = () => {
           (obra) => obra.obra_id === Number.parseInt(obraId),
         )
         if (obraEspecifica) {
-          // Para obra específica, ajustar os totais
           estatisticasFiltradas = {
             ...estatisticasFiltradas,
             total_registros_obra_selecionada: obraEspecifica.count,
@@ -111,23 +110,32 @@ const Dashboard = () => {
         }
       }
 
-      // Ordenar registros por tipo do maior para o menor
-      if (estatisticasFiltradas.registros_por_tipo) {
+      // Garantir que registros_por_tipo seja sempre um array e ordenar
+      if (estatisticasFiltradas.registros_por_tipo && Array.isArray(estatisticasFiltradas.registros_por_tipo)) {
         estatisticasFiltradas.registros_por_tipo = estatisticasFiltradas.registros_por_tipo.sort(
           (a, b) => b.count - a.count,
         )
+      } else {
+        estatisticasFiltradas.registros_por_tipo = []
+      }
+
+      // Garantir que registros_por_obra seja sempre um array
+      if (!Array.isArray(estatisticasFiltradas.registros_por_obra)) {
+        estatisticasFiltradas.registros_por_obra = []
       }
 
       console.log("Dados carregados:", {
         estatisticas: estatisticasFiltradas,
-        atividades: atividadesRes.data.atividades_recentes,
-        timeline: timelineRes.data.timeline,
+        atividades: atividadesRes.data?.atividades_recentes || [],
+        timeline: timelineRes.data?.timeline || [],
       })
 
       setDados({
         estatisticas: estatisticasFiltradas,
-        atividades: atividadesRes.data.atividades_recentes || [],
-        timeline: timelineRes.data.timeline || [],
+        atividades: Array.isArray(atividadesRes.data?.atividades_recentes)
+          ? atividadesRes.data.atividades_recentes
+          : [],
+        timeline: Array.isArray(timelineRes.data?.timeline) ? timelineRes.data.timeline : [],
         loading: false,
         error: "",
       })
@@ -158,14 +166,22 @@ const Dashboard = () => {
     carregarDados(obraId)
   }
 
-  // Configurações dos gráficos
+  // Configurações dos gráficos com proteção contra dados undefined
+  const registrosPorTipo = Array.isArray(dados.estatisticas.registros_por_tipo)
+    ? dados.estatisticas.registros_por_tipo
+    : []
+  const timelineData = Array.isArray(dados.timeline) ? dados.timeline : []
+  const registrosPorObra = Array.isArray(dados.estatisticas.registros_por_obra)
+    ? dados.estatisticas.registros_por_obra
+    : []
+
   const graficoTiposConfig = {
     data: {
-      labels: dados.estatisticas.registros_por_tipo?.map((item) => item.tipo) || [],
+      labels: registrosPorTipo.map((item) => item.tipo || "Sem tipo"),
       datasets: [
         {
           label: "Registros",
-          data: dados.estatisticas.registros_por_tipo?.map((item) => item.count) || [],
+          data: registrosPorTipo.map((item) => item.count || 0),
           backgroundColor: [
             "#3B82F6",
             "#10B981",
@@ -195,12 +211,12 @@ const Dashboard = () => {
       ],
     },
     options: {
-      indexAxis: "y", // Gráfico horizontal
+      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          display: false, // Ocultar legenda para economizar espaço
+          display: false,
         },
         title: {
           display: false,
@@ -231,15 +247,18 @@ const Dashboard = () => {
 
   const graficoTimelineConfig = {
     data: {
-      labels:
-        dados.timeline?.map((item) => {
+      labels: timelineData.map((item) => {
+        try {
           const date = new Date(item.data)
           return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
-        }) || [],
+        } catch {
+          return "Data inválida"
+        }
+      }),
       datasets: [
         {
           label: "Registros por Dia",
-          data: dados.timeline?.map((item) => item.count) || [],
+          data: timelineData.map((item) => item.count || 0),
           borderColor: "#3B82F6",
           backgroundColor: "rgba(59, 130, 246, 0.1)",
           tension: 0.4,
@@ -261,14 +280,18 @@ const Dashboard = () => {
         tooltip: {
           callbacks: {
             title: (context) => {
-              const index = context[0].dataIndex
-              const date = new Date(dados.timeline[index].data)
-              return date.toLocaleDateString("pt-BR", {
-                weekday: "long",
-                day: "2-digit",
-                month: "long",
-                year: "numeric",
-              })
+              try {
+                const index = context[0].dataIndex
+                const date = new Date(timelineData[index].data)
+                return date.toLocaleDateString("pt-BR", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                })
+              } catch {
+                return "Data inválida"
+              }
             },
           },
         },
@@ -291,11 +314,11 @@ const Dashboard = () => {
 
   const graficoObrasConfig = {
     data: {
-      labels: dados.estatisticas.registros_por_obra?.map((item) => item.obra_nome) || [],
+      labels: registrosPorObra.map((item) => item.obra_nome || "Obra sem nome"),
       datasets: [
         {
           label: "Registros por Obra",
-          data: dados.estatisticas.registros_por_obra?.map((item) => item.count) || [],
+          data: registrosPorObra.map((item) => item.count || 0),
           backgroundColor: "#10B981",
           borderRadius: 6,
           borderSkipped: false,
@@ -440,13 +463,6 @@ const Dashboard = () => {
         </Alert>
       )}
 
-      {/* Debug info para admin */}
-      {isAdmin() && process.env.NODE_ENV === "development" && (
-        <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
-          Debug: Admin={isAdmin().toString()}, Obras carregadas={obras.length}, Loading obras={loadingObras.toString()}
-        </div>
-      )}
-
       {/* Cards de Estatísticas Principais */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <Card className="border-l-4 border-l-blue-500">
@@ -489,7 +505,7 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-900">{dados.estatisticas.registros_por_tipo?.length || 0}</div>
+            <div className="text-3xl font-bold text-gray-900">{registrosPorTipo.length || 0}</div>
             <p className="text-xs text-gray-500 mt-1">Tipos diferentes</p>
           </CardContent>
         </Card>
@@ -503,8 +519,8 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-gray-900">
-              {dados.timeline?.length > 0
-                ? Math.round(dados.timeline.reduce((acc, item) => acc + item.count, 0) / dados.timeline.length)
+              {timelineData.length > 0
+                ? Math.round(timelineData.reduce((acc, item) => acc + (item.count || 0), 0) / timelineData.length)
                 : 0}
             </div>
             <p className="text-xs text-gray-500 mt-1">Registros/dia</p>
@@ -529,7 +545,7 @@ const Dashboard = () => {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            {dados.timeline?.length > 0 ? (
+            {timelineData.length > 0 ? (
               <div className="h-80">
                 <Line {...graficoTimelineConfig} />
               </div>
@@ -554,7 +570,7 @@ const Dashboard = () => {
             <CardDescription>Registros por tipo (ordenado do maior para o menor)</CardDescription>
           </CardHeader>
           <CardContent>
-            {dados.estatisticas.registros_por_tipo?.length > 0 ? (
+            {registrosPorTipo.length > 0 ? (
               <div className="h-96">
                 <Bar {...graficoTiposConfig} />
               </div>
@@ -571,7 +587,7 @@ const Dashboard = () => {
       </div>
 
       {/* Gráfico de Obras (apenas admin e quando não há filtro específico) */}
-      {isAdmin() && obraSelecionada === "todas" && dados.estatisticas.registros_por_obra?.length > 0 && (
+      {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
@@ -601,7 +617,7 @@ const Dashboard = () => {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {dados.atividades.length === 0 ? (
+          {!Array.isArray(dados.atividades) || dados.atividades.length === 0 ? (
             <div className="text-center py-12 text-gray-500">
               <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
               <h3 className="text-lg font-medium mb-2">Nenhuma atividade recente</h3>
@@ -622,10 +638,12 @@ const Dashboard = () => {
                   <div className="flex-1 min-w-0">
                     <div className="flex items-start justify-between">
                       <div className="flex-1">
-                        <h4 className="text-base font-semibold text-gray-900 mb-1">{atividade.titulo}</h4>
+                        <h4 className="text-base font-semibold text-gray-900 mb-1">
+                          {atividade.titulo || "Sem título"}
+                        </h4>
                         <div className="flex items-center space-x-4 text-sm text-gray-500 mb-2">
                           <Badge variant="secondary" className="text-xs">
-                            {atividade.tipo_registro}
+                            {atividade.tipo_registro || "Sem tipo"}
                           </Badge>
                           {isAdmin() && atividade.obra_id && (
                             <span className="flex items-center">
@@ -635,7 +653,7 @@ const Dashboard = () => {
                           )}
                           <span className="flex items-center">
                             <User className="h-3 w-3 mr-1" />
-                            {atividade.autor_nome || `Autor #${atividade.autor_id}`}
+                            {atividade.autor_nome || `Autor #${atividade.autor_id || "N/A"}`}
                           </span>
                         </div>
                         {atividade.descricao && (
