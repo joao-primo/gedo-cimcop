@@ -1,186 +1,235 @@
+#!/usr/bin/env python3
 """
-Script para adicionar migração de classificação ao banco de dados
-Este script deve ser executado para adicionar as colunas de classificação
+Script para adicionar colunas de classificação à tabela registros
 """
 
-from backend.src.config import Config
 import os
 import sys
 import psycopg2
-from datetime import datetime
-
-# Adicionar o diretório pai ao path para importar módulos
-sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 
-def run_classification_migration():
-    """Executa a migração para adicionar colunas de classificação"""
+def get_db_connection():
+    """Conectar ao banco de dados"""
+    try:
+        # Tentar variáveis de ambiente do Render primeiro
+        database_url = os.getenv('DATABASE_URL')
+
+        if database_url:
+            print("🔗 Conectando usando DATABASE_URL...")
+            conn = psycopg2.connect(database_url)
+        else:
+            # Fallback para variáveis individuais
+            print("🔗 Conectando usando variáveis individuais...")
+            conn = psycopg2.connect(
+                host=os.getenv('DB_HOST', 'localhost'),
+                port=os.getenv('DB_PORT', '5432'),
+                database=os.getenv('DB_NAME', 'gedo_db'),
+                user=os.getenv('DB_USER', 'postgres'),
+                password=os.getenv('DB_PASSWORD', 'postgres')
+            )
+
+        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+        print("✅ Conexão estabelecida com sucesso!")
+        return conn
+
+    except Exception as e:
+        print(f"❌ Erro ao conectar ao banco: {str(e)}")
+        return None
+
+
+def check_column_exists(cursor, table_name, column_name):
+    """Verificar se uma coluna existe na tabela"""
+    cursor.execute("""
+        SELECT EXISTS (
+            SELECT 1 
+            FROM information_schema.columns 
+            WHERE table_name = %s AND column_name = %s
+        );
+    """, (table_name, column_name))
+    return cursor.fetchone()[0]
+
+
+def add_classification_columns():
+    """Adicionar colunas de classificação"""
+    conn = get_db_connection()
+    if not conn:
+        return False
 
     try:
-        # Conectar ao banco
-        conn = psycopg2.connect(Config.DATABASE_URL)
         cursor = conn.cursor()
 
-        print("Iniciando migração de classificação...")
+        print("🔍 Verificando estrutura atual da tabela registros...")
 
-        # 1. Criar tabela de classificações se não existir
-        cursor.execute("""
-            CREATE TABLE IF NOT EXISTS classificacoes (
-                id SERIAL PRIMARY KEY,
-                grupo VARCHAR(100) NOT NULL,
-                subgrupo VARCHAR(200) NOT NULL,
-                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                UNIQUE(grupo, subgrupo)
-            );
-        """)
+        # Verificar se as colunas já existem
+        has_grupo = check_column_exists(
+            cursor, 'registros', 'classificacao_grupo')
+        has_subgrupo = check_column_exists(
+            cursor, 'registros', 'classificacao_subgrupo')
 
-        # 2. Adicionar colunas de classificação na tabela registros se não existirem
-        cursor.execute("""
-            DO $$ 
-            BEGIN 
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='registros' AND column_name='classificacao_grupo') THEN
-                    ALTER TABLE registros ADD COLUMN classificacao_grupo VARCHAR(100);
-                END IF;
-                
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='registros' AND column_name='classificacao_subgrupo') THEN
-                    ALTER TABLE registros ADD COLUMN classificacao_subgrupo VARCHAR(200);
-                END IF;
-                
-                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
-                              WHERE table_name='registros' AND column_name='classificacao_id') THEN
-                    ALTER TABLE registros ADD COLUMN classificacao_id INTEGER REFERENCES classificacoes(id);
-                END IF;
-            END $$;
-        """)
+        print(f"   - classificacao_grupo existe: {has_grupo}")
+        print(f"   - classificacao_subgrupo existe: {has_subgrupo}")
 
-        # 3. Inserir dados padrão de classificação
-        classificacoes_data = [
-            # 1. Atividades em Campo
-            ("Atividades em Campo", "Aceleração de Atividades"),
-            ("Atividades em Campo", "Atividade em Campo"),
-            ("Atividades em Campo", "Autorização de Início de Atividade"),
-            ("Atividades em Campo", "Fim de Atividade"),
-            ("Atividades em Campo", "Início de Atividade"),
-            ("Atividades em Campo", "Paralisação de Atividade"),
-            ("Atividades em Campo", "Realocação de Equipe"),
-            ("Atividades em Campo", "Retomada de Atividade"),
-            ("Atividades em Campo", "Suspensão de Atividade"),
+        changes_made = False
 
-            # 2. Mobilização e Desmobilização
-            ("Mobilização e Desmobilização", "Desmobilização"),
-            ("Mobilização e Desmobilização", "Início da Mobilização"),
-            ("Mobilização e Desmobilização", "Mobilização"),
-
-            # 3. Recursos e Logística
-            ("Recursos e Logística",
-             "Atraso na Entrega de Materiais Contratada/Contratante"),
-            ("Recursos e Logística", "Dificuldade no Transporte de Mão de Obra"),
-            ("Recursos e Logística", "Entrega de Materiais/Equipamentos"),
-            ("Recursos e Logística", "Falta de Materiais/Equipamentos"),
-            ("Recursos e Logística", "Falta de Recursos Humanos"),
-            ("Recursos e Logística", "Material fora dos padrões Contratada/Contratante"),
-
-            # 4. Planejamento, Documentos e Licenças
-            ("Planejamento, Documentos e Licenças",
-             "Assinatura de Ordem de Serviço"),
-            ("Planejamento, Documentos e Licenças", "Data Prevista para Atividade"),
-            ("Planejamento, Documentos e Licenças",
-             "Entrega de Documentação/Plano/Projeto"),
-            ("Planejamento, Documentos e Licenças",
-             "Falta de Autorização/Licença/Projeto"),
-            ("Planejamento, Documentos e Licenças", "Inconsistência de Projeto"),
-            ("Planejamento, Documentos e Licenças", "Solicitação de Plano"),
-
-            # 5. Condições Externas e Interferências
-            ("Condições Externas e Interferências", "Chuvas"),
-            ("Condições Externas e Interferências", "COVID-19"),
-            ("Condições Externas e Interferências", "Interferências"),
-            ("Condições Externas e Interferências", "Má Condição de Acesso"),
-            ("Condições Externas e Interferências", "Roubo ou Furto"),
-
-            # 6. Desempenho, Qualidade e Anomalias
-            ("Desempenho, Qualidade e Anomalias", "Atraso na Mobilização"),
-            ("Desempenho, Qualidade e Anomalias", "Atraso nas Atividades"),
-            ("Desempenho, Qualidade e Anomalias", "Baixa Produtividade"),
-            ("Desempenho, Qualidade e Anomalias", "DDS"),
-            ("Desempenho, Qualidade e Anomalias", "Extraescopo"),
-            ("Desempenho, Qualidade e Anomalias", "Manutenção"),
-            ("Desempenho, Qualidade e Anomalias", "Retrabalho"),
-
-            # 7. Gestão Contratual e Relacionamento
-            ("Gestão Contratual e Relacionamento", "Análise"),
-            ("Gestão Contratual e Relacionamento", "Aprovação"),
-            ("Gestão Contratual e Relacionamento", "Discordância"),
-            ("Gestão Contratual e Relacionamento", "Divergência no RDO"),
-            ("Gestão Contratual e Relacionamento", "Pendências"),
-            ("Gestão Contratual e Relacionamento", "Solicitações"),
-
-            # 8. Administração e Monitoramento
-            ("Administração e Monitoramento", "Abertura de PTS"),
-            ("Administração e Monitoramento", "Informação Geral"),
-            ("Administração e Monitoramento", "RDO em Atraso"),
-            ("Administração e Monitoramento", "Reunião"),
-        ]
-
-        # Inserir classificações (ignorar duplicatas)
-        for grupo, subgrupo in classificacoes_data:
+        # Adicionar coluna classificacao_grupo se não existir
+        if not has_grupo:
+            print("➕ Adicionando coluna classificacao_grupo...")
             cursor.execute("""
-                INSERT INTO classificacoes (grupo, subgrupo) 
-                VALUES (%s, %s) 
-                ON CONFLICT (grupo, subgrupo) DO NOTHING
-            """, (grupo, subgrupo))
+                ALTER TABLE registros 
+                ADD COLUMN classificacao_grupo VARCHAR(100);
+            """)
+            print("✅ Coluna classificacao_grupo adicionada!")
+            changes_made = True
+        else:
+            print("ℹ️  Coluna classificacao_grupo já existe")
 
-        # 4. Criar índices para melhor performance
+        # Adicionar coluna classificacao_subgrupo se não existir
+        if not has_subgrupo:
+            print("➕ Adicionando coluna classificacao_subgrupo...")
+            cursor.execute("""
+                ALTER TABLE registros 
+                ADD COLUMN classificacao_subgrupo VARCHAR(100);
+            """)
+            print("✅ Coluna classificacao_subgrupo adicionada!")
+            changes_made = True
+        else:
+            print("ℹ️  Coluna classificacao_subgrupo já existe")
+
+        # Criar índices para melhor performance
+        if changes_made:
+            print("📊 Criando índices para otimização...")
+
+            # Índice para classificacao_grupo
+            try:
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_registros_classificacao_grupo 
+                    ON registros(classificacao_grupo);
+                """)
+                print("✅ Índice para classificacao_grupo criado!")
+            except Exception as e:
+                print(f"⚠️  Aviso ao criar índice grupo: {str(e)}")
+
+            # Índice para classificacao_subgrupo
+            try:
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_registros_classificacao_subgrupo 
+                    ON registros(classificacao_subgrupo);
+                """)
+                print("✅ Índice para classificacao_subgrupo criado!")
+            except Exception as e:
+                print(f"⚠️  Aviso ao criar índice subgrupo: {str(e)}")
+
+            # Índice composto
+            try:
+                cursor.execute("""
+                    CREATE INDEX IF NOT EXISTS idx_registros_classificacao_completa 
+                    ON registros(classificacao_grupo, classificacao_subgrupo);
+                """)
+                print("✅ Índice composto criado!")
+            except Exception as e:
+                print(f"⚠️  Aviso ao criar índice composto: {str(e)}")
+
+        # Verificar estrutura final
+        print("\n🔍 Verificando estrutura final...")
         cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_registros_classificacao_grupo 
-            ON registros(classificacao_grupo);
+            SELECT column_name, data_type, is_nullable 
+            FROM information_schema.columns 
+            WHERE table_name = 'registros' 
+            AND column_name LIKE '%classificacao%'
+            ORDER BY column_name;
         """)
 
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_registros_classificacao_id 
-            ON registros(classificacao_id);
-        """)
-
-        cursor.execute("""
-            CREATE INDEX IF NOT EXISTS idx_classificacoes_grupo 
-            ON classificacoes(grupo);
-        """)
-
-        # Commit das alterações
-        conn.commit()
-
-        # Verificar quantas classificações foram inseridas
-        cursor.execute("SELECT COUNT(*) FROM classificacoes")
-        total_classificacoes = cursor.fetchone()[0]
-
-        print(f"✅ Migração de classificação concluída com sucesso!")
-        print(f"📊 Total de classificações disponíveis: {total_classificacoes}")
-        print(
-            f"🕒 Executado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+        columns = cursor.fetchall()
+        if columns:
+            print("📋 Colunas de classificação encontradas:")
+            for col_name, data_type, nullable in columns:
+                print(f"   - {col_name}: {data_type} (nullable: {nullable})")
+        else:
+            print("⚠️  Nenhuma coluna de classificação encontrada")
 
         cursor.close()
         conn.close()
+
+        if changes_made:
+            print("\n🎉 Migração concluída com sucesso!")
+        else:
+            print("\n✅ Estrutura já estava atualizada!")
 
         return True
 
     except Exception as e:
         print(f"❌ Erro durante a migração: {str(e)}")
-        if 'conn' in locals():
-            conn.rollback()
+        if conn:
             conn.close()
         return False
 
 
-if __name__ == "__main__":
-    print("🚀 Executando migração de classificação...")
-    success = run_classification_migration()
+def populate_default_classifications():
+    """Popular classificações padrão se necessário"""
+    conn = get_db_connection()
+    if not conn:
+        return False
 
-    if success:
-        print("\n✅ Migração executada com sucesso!")
-        print("O sistema agora suporta classificação de registros.")
-    else:
-        print("\n❌ Falha na migração!")
-        print("Verifique os logs de erro acima.")
+    try:
+        cursor = conn.cursor()
+
+        print("\n📊 Verificando se há registros sem classificação...")
+        cursor.execute("""
+            SELECT COUNT(*) FROM registros 
+            WHERE classificacao_grupo IS NULL OR classificacao_grupo = '';
+        """)
+
+        count_sem_classificacao = cursor.fetchone()[0]
+        print(f"   - Registros sem classificação: {count_sem_classificacao}")
+
+        if count_sem_classificacao > 0:
+            print("🔄 Aplicando classificação padrão...")
+            cursor.execute("""
+                UPDATE registros 
+                SET 
+                    classificacao_grupo = 'Geral',
+                    classificacao_subgrupo = 'Não Classificado'
+                WHERE classificacao_grupo IS NULL OR classificacao_grupo = '';
+            """)
+
+            print(
+                f"✅ {count_sem_classificacao} registros atualizados com classificação padrão!")
+        else:
+            print("ℹ️  Todos os registros já possuem classificação")
+
+        cursor.close()
+        conn.close()
+        return True
+
+    except Exception as e:
+        print(f"❌ Erro ao popular classificações padrão: {str(e)}")
+        if conn:
+            conn.close()
+        return False
+
+
+def main():
+    """Função principal"""
+    print("🚀 Iniciando migração de classificações...")
+    print("=" * 50)
+
+    # Adicionar colunas
+    if not add_classification_columns():
+        print("❌ Falha na migração das colunas")
         sys.exit(1)
+
+    # Popular classificações padrão
+    if not populate_default_classifications():
+        print("⚠️  Aviso: Falha ao popular classificações padrão")
+
+    print("\n" + "=" * 50)
+    print("🎉 Migração de classificações concluída!")
+    print("\nPróximos passos:")
+    print("1. Reinicie o backend para aplicar as mudanças")
+    print("2. Teste a funcionalidade de classificação no frontend")
+    print("3. Verifique se os dados estão sendo salvos corretamente")
+
+
+if __name__ == "__main__":
+    main()

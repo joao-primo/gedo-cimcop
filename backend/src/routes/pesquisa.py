@@ -4,7 +4,7 @@ from models.obra import Obra
 from models.tipo_registro import TipoRegistro
 from routes.auth import token_required, obra_access_required
 from services.blob_service import blob_service
-from sqlalchemy import or_, and_, func
+from sqlalchemy import or_, and_, func, text
 from datetime import datetime
 import os
 import requests
@@ -31,6 +31,8 @@ def pesquisa_avancada(current_user):
         data_fim = request.args.get('data_fim')
         data_registro_inicio = request.args.get('data_registro_inicio')
         data_registro_fim = request.args.get('data_registro_fim')
+
+        # Classificação (com verificação se coluna existe)
         classificacao_grupo = request.args.get(
             'classificacao_grupo', '').strip()
 
@@ -44,7 +46,7 @@ def pesquisa_avancada(current_user):
         # Aplicar filtros de acesso baseado no usuário
         if current_user.role == 'usuario_padrao':
             query = query.filter_by(obra_id=current_user.obra_id)
-        elif obra_id:
+        elif obra_id and obra_id != 0:
             query = query.filter_by(obra_id=obra_id)
 
         # Filtro por palavra-chave (busca em título e descrição)
@@ -60,12 +62,19 @@ def pesquisa_avancada(current_user):
         if tipo_registro:
             query = query.filter_by(tipo_registro=tipo_registro)
 
-        if tipo_registro_id:
+        if tipo_registro_id and tipo_registro_id != 0:
             query = query.filter_by(tipo_registro_id=tipo_registro_id)
 
-        # NOVO: Filtro por classificação
+        # Filtro por classificação (com verificação se coluna existe)
         if classificacao_grupo:
-            query = query.filter_by(classificacao_grupo=classificacao_grupo)
+            try:
+                # Verificar se a coluna existe
+                db.session.execute(
+                    text("SELECT classificacao_grupo FROM registros LIMIT 1"))
+                query = query.filter_by(
+                    classificacao_grupo=classificacao_grupo)
+            except Exception as e:
+                print(f"Coluna classificacao_grupo não existe: {str(e)}")
 
         # Filtro por código/número
         if codigo_numero:
@@ -140,8 +149,28 @@ def pesquisa_avancada(current_user):
             page=page, per_page=per_page, error_out=False
         )
 
+        # Preparar dados dos registros com informações adicionais
+        registros_data = []
+        for registro in registros_paginados.items:
+            registro_dict = registro.to_dict()
+
+            # Adicionar informações de classificação se existirem
+            try:
+                if hasattr(registro, 'classificacao_grupo'):
+                    registro_dict['classificacao_grupo'] = registro.classificacao_grupo
+                if hasattr(registro, 'classificacao_subgrupo'):
+                    registro_dict['classificacao_subgrupo'] = registro.classificacao_subgrupo
+            except:
+                pass
+
+            # Adicionar informação se tem anexo
+            registro_dict['anexo_url'] = bool(
+                registro.blob_url or registro.caminho_anexo)
+
+            registros_data.append(registro_dict)
+
         return jsonify({
-            'registros': [registro.to_dict() for registro in registros_paginados.items],
+            'registros': registros_data,
             'pagination': {
                 'page': page,
                 'per_page': per_page,
@@ -167,6 +196,7 @@ def pesquisa_avancada(current_user):
         }), 200
 
     except Exception as e:
+        print(f"Erro na pesquisa: {str(e)}")
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
@@ -195,9 +225,14 @@ def get_filtros_disponiveis(current_user):
         tipos_registro_existentes = [tipo[0]
                                      for tipo in query.all() if tipo[0]]
 
-        # NOVO: Grupos de classificação disponíveis
-        from models.classificacao import Classificacao
-        grupos_classificacao = Classificacao.get_grupos()
+        # Grupos de classificação disponíveis (com verificação se coluna existe)
+        grupos_classificacao = []
+        try:
+            from models.classificacao import Classificacao
+            grupos_classificacao = Classificacao.get_grupos()
+        except Exception as e:
+            print(f"Erro ao carregar classificações: {str(e)}")
+            grupos_classificacao = []
 
         # Autores (usuários que criaram registros)
         from models.user import User
@@ -253,6 +288,7 @@ def get_filtros_disponiveis(current_user):
         }), 200
 
     except Exception as e:
+        print(f"Erro ao carregar filtros: {str(e)}")
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
@@ -285,8 +321,13 @@ def exportar_resultados(current_user):
             query = query.filter_by(tipo_registro_id=data['tipo_registro_id'])
 
         if data.get('classificacao_grupo'):
-            query = query.filter_by(
-                classificacao_grupo=data['classificacao_grupo'])
+            try:
+                db.session.execute(
+                    text("SELECT classificacao_grupo FROM registros LIMIT 1"))
+                query = query.filter_by(
+                    classificacao_grupo=data['classificacao_grupo'])
+            except:
+                pass
 
         if data.get('codigo_numero'):
             query = query.filter(
@@ -327,12 +368,10 @@ def exportar_resultados(current_user):
         # Preparar dados para Excel
         dados_excel = []
         for registro in registros:
-            dados_excel.append({
+            row_data = {
                 'ID': registro.id,
                 'Título': registro.titulo,
                 'Tipo de Registro': registro.tipo_registro,
-                'Classificação Grupo': registro.classificacao_grupo or '',
-                'Classificação Subgrupo': registro.classificacao_subgrupo or '',
                 'Data do Registro': registro.data_registro.strftime('%Y-%m-%d') if registro.data_registro else '',
                 'Código/Número': registro.codigo_numero or '',
                 'Descrição': registro.descricao,
@@ -343,7 +382,19 @@ def exportar_resultados(current_user):
                 'Nome do Arquivo': registro.nome_arquivo_original or '',
                 'Data de Criação': registro.created_at.strftime('%Y-%m-%d %H:%M:%S') if registro.created_at else '',
                 'Última Atualização': registro.updated_at.strftime('%Y-%m-%d %H:%M:%S') if registro.updated_at else ''
-            })
+            }
+
+            # Adicionar classificações se existirem
+            try:
+                if hasattr(registro, 'classificacao_grupo'):
+                    row_data['Classificação Grupo'] = registro.classificacao_grupo or ''
+                if hasattr(registro, 'classificacao_subgrupo'):
+                    row_data['Classificação Subgrupo'] = registro.classificacao_subgrupo or ''
+            except:
+                row_data['Classificação Grupo'] = ''
+                row_data['Classificação Subgrupo'] = ''
+
+            dados_excel.append(row_data)
 
         # Criar arquivo Excel
         output = BytesIO()
@@ -379,6 +430,7 @@ def exportar_resultados(current_user):
         )
 
     except Exception as e:
+        print(f"Erro ao exportar: {str(e)}")
         return jsonify({'message': f'Erro ao exportar: {str(e)}'}), 500
 
 
@@ -395,11 +447,23 @@ def visualizar_registro(current_user, registro_id):
         if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
             return jsonify({'message': 'Acesso negado a este registro'}), 403
 
+        registro_dict = registro.to_dict()
+
+        # Adicionar classificações se existirem
+        try:
+            if hasattr(registro, 'classificacao_grupo'):
+                registro_dict['classificacao_grupo'] = registro.classificacao_grupo
+            if hasattr(registro, 'classificacao_subgrupo'):
+                registro_dict['classificacao_subgrupo'] = registro.classificacao_subgrupo
+        except:
+            pass
+
         return jsonify({
-            'registro': registro.to_dict()
+            'registro': registro_dict
         }), 200
 
     except Exception as e:
+        print(f"Erro ao visualizar registro: {str(e)}")
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
