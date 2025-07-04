@@ -1,5 +1,3 @@
-"use client"
-
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { configuracoesAPI, authAPI } from "../services/api" // ← ÚNICA ADIÇÃO

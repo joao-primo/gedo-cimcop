@@ -1,4 +1,3 @@
-"use client"
 import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"

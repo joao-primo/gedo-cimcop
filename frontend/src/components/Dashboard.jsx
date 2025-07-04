@@ -1,5 +1,3 @@
-"use client"
-
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { dashboardAPI, pesquisaAPI } from "../services/api"
