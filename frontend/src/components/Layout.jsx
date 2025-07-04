@@ -1,148 +1,187 @@
 "use client"
 
-import { useState } from "react"
+import { useState, useContext } from "react"
 import { Link, useLocation, useNavigate } from "react-router-dom"
-import { useAuth } from "../contexts/AuthContext"
+import { AuthContext } from "../contexts/AuthContext"
 import {
   Home,
+  FileText,
+  Search,
+  BarChart3,
+  Settings,
   Users,
   Building2,
-  Settings,
-  Workflow,
-  Search,
-  FileText,
+  FileType,
   Upload,
   LogOut,
-  Lock,
   Menu,
   X,
+  User,
 } from "lucide-react"
-import { Button } from "@/components/ui/button"
-import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuSeparator,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu"
-import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 
 const Layout = ({ children }) => {
-  const { user, logout } = useAuth()
+  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { user, logout } = useContext(AuthContext)
   const location = useLocation()
   const navigate = useNavigate()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
 
-  const handleLogout = async () => {
-    try {
-      await logout()
-      navigate("/login")
-    } catch (error) {
-      console.error("Erro ao fazer logout:", error)
-    }
+  const handleLogout = () => {
+    logout()
+    navigate("/login")
   }
 
   const menuItems = [
     { path: "/dashboard", icon: Home, label: "Dashboard" },
-    { path: "/novo-registro", icon: FileText, label: "Novo Registro" },
+    { path: "/registros", icon: FileText, label: "Registros" },
     { path: "/pesquisa", icon: Search, label: "Pesquisa" },
+    { path: "/relatorios", icon: BarChart3, label: "Relatórios" },
     { path: "/importacao", icon: Upload, label: "Importação" },
-    { path: "/relatorios", icon: FileText, label: "Relatórios" },
+  ]
+
+  // Menu items apenas para administradores
+  const adminMenuItems = [
     { path: "/usuarios", icon: Users, label: "Usuários" },
     { path: "/obras", icon: Building2, label: "Obras" },
+    { path: "/tipos-registro", icon: FileType, label: "Tipos de Registro" },
     { path: "/configuracoes", icon: Settings, label: "Configurações" },
-    { path: "/workflow", icon: Workflow, label: "Workflow" },
   ]
 
   const isActive = (path) => location.pathname === path
 
   return (
     <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b border-gray-200 fixed top-0 left-0 right-0 z-50">
-        <div className="flex items-center justify-between px-4 py-3">
-          <div className="flex items-center space-x-4">
-            <Button variant="ghost" size="sm" className="lg:hidden" onClick={() => setSidebarOpen(!sidebarOpen)}>
-              {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-            </Button>
-            <h1 className="text-xl font-bold text-gray-900">GEDO</h1>
+      {/* Mobile sidebar overlay */}
+      {sidebarOpen && (
+        <div className="fixed inset-0 z-40 bg-black bg-opacity-50 lg:hidden" onClick={() => setSidebarOpen(false)} />
+      )}
+
+      {/* Sidebar */}
+      <div
+        className={`
+        fixed inset-y-0 left-0 z-50 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out
+        ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
+        lg:translate-x-0 lg:static lg:inset-0
+      `}
+      >
+        <div className="flex items-center justify-between h-16 px-6 border-b border-gray-200">
+          <h1 className="text-xl font-bold text-gray-900">GEDO</h1>
+          <button
+            onClick={() => setSidebarOpen(false)}
+            className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <nav className="mt-6 px-3">
+          <div className="space-y-1">
+            {menuItems.map((item) => {
+              const Icon = item.icon
+              return (
+                <Link
+                  key={item.path}
+                  to={item.path}
+                  className={`
+                    flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                    ${
+                      isActive(item.path)
+                        ? "bg-blue-100 text-blue-700 border-r-2 border-blue-700"
+                        : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                    }
+                  `}
+                  onClick={() => setSidebarOpen(false)}
+                >
+                  <Icon className="mr-3 h-5 w-5" />
+                  {item.label}
+                </Link>
+              )
+            })}
           </div>
 
-          <div className="flex items-center space-x-4">
-            <DropdownMenu>
-              <DropdownMenuTrigger asChild>
-                <Button variant="ghost" className="relative h-8 w-8 rounded-full">
-                  <Avatar className="h-8 w-8">
-                    <AvatarFallback className="bg-blue-500 text-white">
-                      {user?.nome?.charAt(0)?.toUpperCase() || "U"}
-                    </AvatarFallback>
-                  </Avatar>
-                </Button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent className="w-56" align="end" forceMount>
-                <div className="flex items-center justify-start gap-2 p-2">
-                  <div className="flex flex-col space-y-1 leading-none">
-                    <p className="font-medium">{user?.nome}</p>
-                    <p className="w-[200px] truncate text-sm text-muted-foreground">{user?.email}</p>
-                  </div>
-                </div>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem asChild>
-                  <Link to="/trocar-senha" className="flex items-center">
-                    <Lock className="mr-2 h-4 w-4" />
-                    Trocar Senha
-                  </Link>
-                </DropdownMenuItem>
-                <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={handleLogout}>
-                  <LogOut className="mr-2 h-4 w-4" />
-                  Sair
-                </DropdownMenuItem>
-              </DropdownMenuContent>
-            </DropdownMenu>
+          {user?.role === "administrador" && (
+            <>
+              <div className="mt-8 mb-3">
+                <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Administração</h3>
+              </div>
+              <div className="space-y-1">
+                {adminMenuItems.map((item) => {
+                  const Icon = item.icon
+                  return (
+                    <Link
+                      key={item.path}
+                      to={item.path}
+                      className={`
+                        flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
+                        ${
+                          isActive(item.path)
+                            ? "bg-blue-100 text-blue-700 border-r-2 border-blue-700"
+                            : "text-gray-600 hover:text-gray-900 hover:bg-gray-100"
+                        }
+                      `}
+                      onClick={() => setSidebarOpen(false)}
+                    >
+                      <Icon className="mr-3 h-5 w-5" />
+                      {item.label}
+                    </Link>
+                  )
+                })}
+              </div>
+            </>
+          )}
+        </nav>
+
+        {/* User info at bottom */}
+        <div className="absolute bottom-0 left-0 right-0 p-4 border-t border-gray-200">
+          <div className="flex items-center">
+            <div className="flex-shrink-0">
+              <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
+                <User className="w-4 h-4 text-blue-600" />
+              </div>
+            </div>
+            <div className="ml-3 flex-1 min-w-0">
+              <p className="text-sm font-medium text-gray-900 truncate">{user?.username}</p>
+              <p className="text-xs text-gray-500 truncate">
+                {user?.role === "administrador" ? "Administrador" : "Usuário"}
+              </p>
+            </div>
+            <button
+              onClick={handleLogout}
+              className="ml-2 p-1 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+              title="Sair"
+            >
+              <LogOut className="h-4 w-4" />
+            </button>
           </div>
         </div>
-      </header>
+      </div>
 
-      <div className="flex pt-16">
-        {/* Sidebar */}
-        <aside
-          className={`${
-            sidebarOpen ? "translate-x-0" : "-translate-x-full"
-          } fixed inset-y-0 left-0 z-40 w-64 bg-white shadow-lg transform transition-transform duration-300 ease-in-out lg:translate-x-0 lg:static lg:inset-0 pt-16 lg:pt-0`}
-        >
-          <div className="flex flex-col h-full">
-            <nav className="flex-1 px-4 py-6 space-y-2">
-              {menuItems.map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.path}
-                    to={item.path}
-                    className={`flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors ${
-                      isActive(item.path)
-                        ? "bg-blue-50 text-blue-700 border-r-2 border-blue-700"
-                        : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                    }`}
-                    onClick={() => setSidebarOpen(false)}
-                  >
-                    <Icon className="mr-3 h-5 w-5" />
-                    {item.label}
-                  </Link>
-                )
-              })}
-            </nav>
+      {/* Main content */}
+      <div className="lg:pl-64">
+        {/* Top bar */}
+        <div className="sticky top-0 z-10 bg-white shadow-sm border-b border-gray-200">
+          <div className="flex items-center justify-between h-16 px-4 sm:px-6 lg:px-8">
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="lg:hidden p-2 rounded-md text-gray-400 hover:text-gray-600 hover:bg-gray-100"
+            >
+              <Menu className="h-5 w-5" />
+            </button>
+
+            <div className="flex-1 lg:flex lg:items-center lg:justify-between">
+              <div className="min-w-0 flex-1">
+                <h2 className="text-lg font-semibold text-gray-900 truncate">
+                  Sistema de Gerenciamento de Documentos e Obras
+                </h2>
+              </div>
+            </div>
           </div>
-        </aside>
+        </div>
 
-        {/* Overlay para mobile */}
-        {sidebarOpen && (
-          <div className="fixed inset-0 z-30 bg-black bg-opacity-50 lg:hidden" onClick={() => setSidebarOpen(false)} />
-        )}
-
-        {/* Main Content */}
-        <main className="flex-1 lg:ml-0">
-          <div className="p-6">{children}</div>
+        {/* Page content */}
+        <main className="flex-1">
+          <div className="py-6">
+            <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">{children}</div>
+          </div>
         </main>
       </div>
     </div>

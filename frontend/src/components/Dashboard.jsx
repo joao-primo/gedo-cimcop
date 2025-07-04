@@ -1,124 +1,169 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Button } from "@/components/ui/button"
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from "recharts"
-import { Activity, FileText, Clock, TrendingUp, RefreshCw } from "lucide-react"
-import { toast } from "sonner"
-import api from "../services/api"
+import { useState, useEffect, useContext } from "react"
+import { AuthContext } from "../contexts/AuthContext"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+  PieChart,
+  Pie,
+  Cell,
+  LineChart,
+  Line,
+} from "recharts"
+import { FileText, TrendingUp, Calendar, AlertCircle, CheckCircle, Clock, Activity } from "lucide-react"
 
 const Dashboard = () => {
+  const { user } = useContext(AuthContext)
   const [loading, setLoading] = useState(true)
-  const [refreshing, setRefreshing] = useState(false)
-  const [stats, setStats] = useState({
+  const [error, setError] = useState(null)
+  const [estatisticas, setEstatisticas] = useState({
     total_registros: 0,
-    registros_ultimos_30_dias: 0,
-    registros_com_anexo: 0,
-    media_diaria: 0,
+    registros_ultimos_30d: 0,
+    registros_por_tipo: [],
+    registros_por_classificacao: [],
+    registros_por_obra: [],
+    registros_anexos: { com_anexo: 0, sem_anexo: 0 },
   })
-  const [timelineData, setTimelineData] = useState([])
-  const [recentActivities, setRecentActivities] = useState([])
-  const [obras, setObras] = useState([])
-  const [selectedObra, setSelectedObra] = useState("all")
-  const [topTipos, setTopTipos] = useState([])
+  const [atividadesRecentes, setAtividadesRecentes] = useState([])
+  const [timeline, setTimeline] = useState([])
 
-  const COLORS = ["#0088FE", "#00C49F", "#FFBB28", "#FF8042", "#8884D8"]
+  useEffect(() => {
+    carregarDados()
+  }, [])
 
-  const fetchDashboardData = async () => {
+  const carregarDados = async () => {
     try {
       setLoading(true)
+      setError(null)
 
-      // Buscar estatísticas
-      try {
-        const statsResponse = await api.get("/dashboard/estatisticas")
-        if (statsResponse.data) {
-          setStats(statsResponse.data)
-        }
-      } catch (error) {
-        console.warn("Erro ao carregar estatísticas:", error)
-        setStats({
-          total_registros: 0,
-          registros_ultimos_30_dias: 0,
-          registros_com_anexo: 0,
-          media_diaria: 0,
-        })
+      const token = localStorage.getItem("token")
+      const headers = {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/json",
       }
 
-      // Buscar timeline
+      // Carregar estatísticas
       try {
-        const timelineUrl =
-          selectedObra === "all" ? "/dashboard/timeline?dias=30" : `/dashboard/timeline?dias=30&obra_id=${selectedObra}`
-        const timelineResponse = await api.get(timelineUrl)
-        if (timelineResponse.data) {
-          setTimelineData(timelineResponse.data)
+        const estatisticasResponse = await fetch("/api/dashboard/estatisticas", { headers })
+        if (estatisticasResponse.ok) {
+          const estatisticasData = await estatisticasResponse.json()
+          setEstatisticas(estatisticasData)
+        } else {
+          console.warn("Erro ao carregar estatísticas:", estatisticasResponse.status)
+          // Manter valores padrão
         }
-      } catch (error) {
-        console.warn("Erro ao carregar timeline:", error)
-        setTimelineData([])
+      } catch (err) {
+        console.warn("Erro na requisição de estatísticas:", err)
       }
 
-      // Buscar atividades recentes
+      // Carregar atividades recentes
       try {
-        const activitiesResponse = await api.get("/dashboard/atividades-recentes?limit=5")
-        if (activitiesResponse.data) {
-          setRecentActivities(activitiesResponse.data)
+        const atividadesResponse = await fetch("/api/dashboard/atividades-recentes?limit=5", { headers })
+        if (atividadesResponse.ok) {
+          const atividadesData = await atividadesResponse.json()
+          setAtividadesRecentes(atividadesData.atividades_recentes || [])
+        } else {
+          console.warn("Erro ao carregar atividades:", atividadesResponse.status)
         }
-      } catch (error) {
-        console.warn("Erro ao carregar atividades:", error)
-        setRecentActivities([])
+      } catch (err) {
+        console.warn("Erro na requisição de atividades:", err)
       }
 
-      // Buscar obras para filtro
+      // Carregar timeline
       try {
-        const obrasResponse = await api.get("/obras/")
-        if (obrasResponse.data) {
-          setObras(obrasResponse.data)
+        const timelineResponse = await fetch("/api/dashboard/timeline?dias=30", { headers })
+        if (timelineResponse.ok) {
+          const timelineData = await timelineResponse.json()
+          setTimeline(timelineData.timeline || [])
+        } else {
+          console.warn("Erro ao carregar timeline:", timelineResponse.status)
         }
-      } catch (error) {
-        console.warn("Erro ao carregar obras:", error)
-        setObras([])
+      } catch (err) {
+        console.warn("Erro na requisição de timeline:", err)
       }
-
-      // Buscar top tipos de registro
-      try {
-        const topTiposResponse = await api.get("/dashboard/top-tipos-registro")
-        if (topTiposResponse.data) {
-          setTopTipos(topTiposResponse.data)
-        }
-      } catch (error) {
-        console.warn("Erro ao carregar top tipos:", error)
-        setTopTipos([])
-      }
-    } catch (error) {
-      console.error("Erro geral no dashboard:", error)
-      toast.error("Erro ao carregar dados do dashboard")
+    } catch (err) {
+      console.error("Erro geral ao carregar dashboard:", err)
+      setError("Erro ao carregar dados do dashboard")
     } finally {
       setLoading(false)
-      setRefreshing(false)
     }
   }
 
-  const handleRefresh = async () => {
-    setRefreshing(true)
-    await fetchDashboardData()
-  }
+  // Cores para os gráficos
+  const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#84CC16", "#F97316"]
 
-  const handleObraChange = (value) => {
-    setSelectedObra(value)
-  }
-
-  useEffect(() => {
-    fetchDashboardData()
-  }, [selectedObra])
+  // Cards de estatísticas
+  const StatCard = ({ title, value, icon: Icon, color = "blue", subtitle }) => (
+    <div className="bg-white rounded-lg shadow p-6">
+      <div className="flex items-center">
+        <div className={`flex-shrink-0 p-3 rounded-lg bg-${color}-100`}>
+          <Icon className={`h-6 w-6 text-${color}-600`} />
+        </div>
+        <div className="ml-4 flex-1">
+          <p className="text-sm font-medium text-gray-500">{title}</p>
+          <p className="text-2xl font-semibold text-gray-900">{value}</p>
+          {subtitle && <p className="text-sm text-gray-600 mt-1">{subtitle}</p>}
+        </div>
+      </div>
+    </div>
+  )
 
   if (loading) {
     return (
-      <div className="flex items-center justify-center min-h-[400px]">
-        <div className="text-center">
-          <div className="animate-spin rounded-full h-16 w-16 border-b-2 border-blue-600 mx-auto mb-4"></div>
-          <p className="text-gray-600">Carregando dashboard...</p>
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+          {[1, 2, 3, 4].map((i) => (
+            <div key={i} className="bg-white rounded-lg shadow p-6 animate-pulse">
+              <div className="flex items-center">
+                <div className="flex-shrink-0 p-3 rounded-lg bg-gray-200 w-12 h-12"></div>
+                <div className="ml-4 flex-1">
+                  <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
+                  <div className="h-6 bg-gray-200 rounded w-1/2"></div>
+                </div>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="bg-white rounded-lg shadow p-6 animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+            <div className="h-64 bg-gray-200 rounded"></div>
+          </div>
+          <div className="bg-white rounded-lg shadow p-6 animate-pulse">
+            <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
+            <div className="h-64 bg-gray-200 rounded"></div>
+          </div>
+        </div>
+      </div>
+    )
+  }
+
+  if (error) {
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        </div>
+
+        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
+          <div className="flex items-center">
+            <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
+            <p className="text-red-700">{error}</p>
+          </div>
+          <button onClick={carregarDados} className="mt-2 text-sm text-red-600 hover:text-red-800 underline">
+            Tentar novamente
+          </button>
         </div>
       </div>
     )
@@ -127,187 +172,171 @@ const Dashboard = () => {
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex justify-between items-center">
+      <div className="flex items-center justify-between">
         <div>
           <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">Visão geral do sistema</p>
+          <p className="text-gray-600">Bem-vindo, {user?.username}! Aqui está um resumo das atividades.</p>
         </div>
-        <div className="flex items-center space-x-4">
-          <Select value={selectedObra} onValueChange={handleObraChange}>
-            <SelectTrigger className="w-48">
-              <SelectValue placeholder="Todas as obras" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">Todas as obras</SelectItem>
-              {obras.map((obra) => (
-                <SelectItem key={obra.id} value={obra.id.toString()}>
-                  {obra.nome}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Button onClick={handleRefresh} disabled={refreshing} variant="outline" size="sm">
-            <RefreshCw className={`h-4 w-4 mr-2 ${refreshing ? "animate-spin" : ""}`} />
-            Atualizar
-          </Button>
-        </div>
+        <button
+          onClick={carregarDados}
+          className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
+        >
+          <Activity className="h-4 w-4 mr-2" />
+          Atualizar
+        </button>
       </div>
 
       {/* Cards de Estatísticas */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Total de Registros</CardTitle>
-            <FileText className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.total_registros}</div>
-            <p className="text-xs text-muted-foreground">Total no sistema</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Últimos 30 Dias</CardTitle>
-            <TrendingUp className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.registros_ultimos_30_dias}</div>
-            <p className="text-xs text-muted-foreground">Registros recentes</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Registros com Anexo</CardTitle>
-            <Activity className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.registros_com_anexo}</div>
-            <p className="text-xs text-muted-foreground">Com arquivos anexos</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium">Média Diária</CardTitle>
-            <Clock className="h-4 w-4 text-muted-foreground" />
-          </CardHeader>
-          <CardContent>
-            <div className="text-2xl font-bold">{stats.media_diaria}</div>
-            <p className="text-xs text-muted-foreground">Registros por dia</p>
-          </CardContent>
-        </Card>
+        <StatCard
+          title="Total de Registros"
+          value={estatisticas.total_registros.toLocaleString()}
+          icon={FileText}
+          color="blue"
+        />
+        <StatCard
+          title="Últimos 30 Dias"
+          value={estatisticas.registros_ultimos_30d.toLocaleString()}
+          icon={TrendingUp}
+          color="green"
+        />
+        <StatCard
+          title="Com Anexos"
+          value={estatisticas.registros_anexos.com_anexo.toLocaleString()}
+          icon={CheckCircle}
+          color="purple"
+          subtitle={`${estatisticas.registros_anexos.sem_anexo} sem anexos`}
+        />
+        <StatCard title="Atividades Hoje" value={atividadesRecentes.length} icon={Clock} color="orange" />
       </div>
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gráfico de Atividade dos Últimos 30 Dias */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Atividade dos Últimos 30 Dias</CardTitle>
-            <p className="text-sm text-muted-foreground">Registros criados por dia</p>
-          </CardHeader>
-          <CardContent>
-            {timelineData.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={timelineData}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="data" />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="registros" fill="#3b82f6" />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-gray-500">
-                <div className="text-center">
-                  <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Nenhum dado disponível</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        {/* Gráfico de Registros por Tipo */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Registros por Tipo</h3>
+          {estatisticas.registros_por_tipo.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <BarChart data={estatisticas.registros_por_tipo}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="tipo" angle={-45} textAnchor="end" height={80} fontSize={12} />
+                <YAxis />
+                <Tooltip />
+                <Bar dataKey="count" fill="#3B82F6" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-gray-500">Nenhum dado disponível</div>
+          )}
+        </div>
 
-        {/* Top 10 Tipos de Registro */}
-        <Card>
-          <CardHeader>
-            <CardTitle>Top 10 Tipos de Registro</CardTitle>
-            <p className="text-sm text-muted-foreground">Os 10 tipos com mais registros</p>
-          </CardHeader>
-          <CardContent>
-            {topTipos.length > 0 ? (
+        {/* Gráfico de Timeline */}
+        <div className="bg-white rounded-lg shadow p-6">
+          <h3 className="text-lg font-medium text-gray-900 mb-4">Atividade dos Últimos 30 Dias</h3>
+          {timeline.length > 0 ? (
+            <ResponsiveContainer width="100%" height={300}>
+              <LineChart data={timeline}>
+                <CartesianGrid strokeDasharray="3 3" />
+                <XAxis dataKey="data" />
+                <YAxis />
+                <Tooltip />
+                <Line type="monotone" dataKey="count" stroke="#10B981" strokeWidth={2} />
+              </LineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="h-64 flex items-center justify-center text-gray-500">Nenhum dado disponível</div>
+          )}
+        </div>
+      </div>
+
+      {/* Gráficos de Classificação e Obras (se disponíveis) */}
+      {(estatisticas.registros_por_classificacao.length > 0 || estatisticas.registros_por_obra.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* Gráfico de Classificações */}
+          {estatisticas.registros_por_classificacao.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Registros por Classificação</h3>
               <ResponsiveContainer width="100%" height={300}>
                 <PieChart>
                   <Pie
-                    data={topTipos}
+                    data={estatisticas.registros_por_classificacao}
                     cx="50%"
                     cy="50%"
                     labelLine={false}
-                    label={({ nome, percent }) => `${nome} (${(percent * 100).toFixed(0)}%)`}
+                    label={({ grupo, percent }) => `${grupo} (${(percent * 100).toFixed(0)}%)`}
                     outerRadius={80}
                     fill="#8884d8"
-                    dataKey="total"
+                    dataKey="count"
                   >
-                    {topTipos.map((entry, index) => (
+                    {estatisticas.registros_por_classificacao.map((entry, index) => (
                       <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
                     ))}
                   </Pie>
                   <Tooltip />
                 </PieChart>
               </ResponsiveContainer>
-            ) : (
-              <div className="flex items-center justify-center h-[300px] text-gray-500">
-                <div className="text-center">
-                  <FileText className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                  <p>Nenhum dado disponível</p>
-                </div>
-              </div>
-            )}
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Atividades Recentes */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Atividades Recentes</CardTitle>
-          <p className="text-sm text-muted-foreground">Últimas 5 atividades criadas no sistema</p>
-        </CardHeader>
-        <CardContent>
-          {recentActivities.length > 0 ? (
-            <div className="space-y-4">
-              {recentActivities.map((activity, index) => (
-                <div key={index} className="flex items-center space-x-4 p-3 bg-gray-50 rounded-lg">
-                  <div className="flex-shrink-0">
-                    <div className="w-8 h-8 bg-blue-100 rounded-full flex items-center justify-center">
-                      <FileText className="w-4 h-4 text-blue-600" />
-                    </div>
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">
-                      {activity.descricao || "Registro sem descrição"}
-                    </p>
-                    <p className="text-sm text-gray-500">
-                      {activity.obra_nome} • {activity.tipo_nome}
-                    </p>
-                  </div>
-                  <div className="flex-shrink-0 text-sm text-gray-500">
-                    {new Date(activity.data_registro).toLocaleDateString("pt-BR")}
-                  </div>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Activity className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Nenhuma atividade recente</p>
-              <p className="text-sm">Quando novos registros forem criados, eles aparecerão aqui</p>
             </div>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Gráfico de Obras (apenas para admin) */}
+          {user?.role === "administrador" && estatisticas.registros_por_obra.length > 0 && (
+            <div className="bg-white rounded-lg shadow p-6">
+              <h3 className="text-lg font-medium text-gray-900 mb-4">Registros por Obra</h3>
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={estatisticas.registros_por_obra}>
+                  <CartesianGrid strokeDasharray="3 3" />
+                  <XAxis dataKey="obra_nome" angle={-45} textAnchor="end" height={80} fontSize={12} />
+                  <YAxis />
+                  <Tooltip />
+                  <Bar dataKey="count" fill="#8B5CF6" />
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Atividades Recentes */}
+      <div className="bg-white rounded-lg shadow">
+        <div className="px-6 py-4 border-b border-gray-200">
+          <h3 className="text-lg font-medium text-gray-900">Atividades Recentes</h3>
+        </div>
+        <div className="divide-y divide-gray-200">
+          {atividadesRecentes.length > 0 ? (
+            atividadesRecentes.map((atividade, index) => (
+              <div key={index} className="px-6 py-4 hover:bg-gray-50">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-medium text-gray-900 truncate">{atividade.titulo}</p>
+                    <p className="text-sm text-gray-500 truncate">{atividade.descricao}</p>
+                    <div className="mt-1 flex items-center text-xs text-gray-400">
+                      <Calendar className="h-3 w-3 mr-1" />
+                      {new Date(atividade.created_at).toLocaleDateString("pt-BR")}
+                      {atividade.obra && (
+                        <>
+                          <span className="mx-2">•</span>
+                          <span>{atividade.obra.nome}</span>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                  <div className="flex-shrink-0">
+                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
+                      {atividade.tipo_registro}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            ))
+          ) : (
+            <div className="px-6 py-8 text-center">
+              <FileText className="mx-auto h-12 w-12 text-gray-400" />
+              <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhuma atividade recente</h3>
+              <p className="mt-1 text-sm text-gray-500">Quando houver novos registros, eles aparecerão aqui.</p>
+            </div>
+          )}
+        </div>
+      </div>
     </div>
   )
 }
