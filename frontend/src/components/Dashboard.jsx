@@ -178,6 +178,40 @@ const Dashboard = () => {
     carregarDados(obraId)
   }
 
+  // Paleta de cores elegante - tons de azul
+  const gerarCoresElegantes = (quantidade) => {
+    const coresBase = [
+      "#1e40af", // azul escuro
+      "#3b82f6", // azul médio
+      "#60a5fa", // azul claro
+      "#93c5fd", // azul muito claro
+      "#1e3a8a", // azul navy
+      "#2563eb", // azul royal
+      "#3730a3", // azul índigo
+      "#4f46e5", // azul violeta
+      "#6366f1", // azul lavanda
+      "#8b5cf6", // roxo claro
+      "#0ea5e9", // azul céu
+      "#06b6d4", // azul turquesa
+      "#0891b2", // azul petróleo
+      "#0e7490", // azul aço
+      "#155e75", // azul escuro aço
+      "#164e63", // azul marinho
+      "#1e293b", // azul grafite
+      "#334155", // azul cinza
+      "#475569", // azul cinza claro
+      "#64748b", // azul cinza médio
+      "#94a3b8", // azul cinza suave
+    ]
+
+    // Se precisar de mais cores que as disponíveis, repetir com variações
+    const cores = []
+    for (let i = 0; i < quantidade; i++) {
+      cores.push(coresBase[i % coresBase.length])
+    }
+    return cores
+  }
+
   // Configurações dos gráficos com proteção contra dados undefined
   const registrosPorTipo = Array.isArray(dados.estatisticas.registros_por_tipo)
     ? dados.estatisticas.registros_por_tipo
@@ -194,29 +228,7 @@ const Dashboard = () => {
         {
           label: "Registros",
           data: registrosPorTipo.map((item) => item.count || 0),
-          backgroundColor: [
-            "#3B82F6",
-            "#10B981",
-            "#F59E0B",
-            "#EF4444",
-            "#8B5CF6",
-            "#06B6D4",
-            "#84CC16",
-            "#F97316",
-            "#EC4899",
-            "#6366F1",
-            "#14B8A6",
-            "#F59E0B",
-            "#EF4444",
-            "#8B5CF6",
-            "#06B6D4",
-            "#84CC16",
-            "#F97316",
-            "#EC4899",
-            "#6366F1",
-            "#14B8A6",
-            "#F59E0B",
-          ],
+          backgroundColor: gerarCoresElegantes(registrosPorTipo.length),
           borderWidth: 0,
           borderRadius: 4,
         },
@@ -271,11 +283,11 @@ const Dashboard = () => {
         {
           label: "Registros por Dia",
           data: timelineData.map((item) => item.count || 0),
-          borderColor: "#3B82F6",
+          borderColor: "#3b82f6",
           backgroundColor: "rgba(59, 130, 246, 0.1)",
           tension: 0.4,
           fill: true,
-          pointBackgroundColor: "#3B82F6",
+          pointBackgroundColor: "#3b82f6",
           pointBorderColor: "#ffffff",
           pointBorderWidth: 2,
           pointRadius: 4,
@@ -331,9 +343,11 @@ const Dashboard = () => {
         {
           label: "Registros por Obra",
           data: registrosPorObra.map((item) => item.count || 0),
-          backgroundColor: "#10B981",
-          borderRadius: 6,
+          backgroundColor: "#3b82f6", // Azul padrão do sistema
+          borderRadius: 4,
           borderSkipped: false,
+          barThickness: 40, // Controla a espessura das barras
+          maxBarThickness: 50, // Espessura máxima
         },
       ],
     },
@@ -366,6 +380,9 @@ const Dashboard = () => {
           },
         },
       },
+      // Reduzir o espaçamento entre as barras
+      categoryPercentage: 0.7,
+      barPercentage: 0.8,
     },
   }
 
@@ -572,11 +589,11 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico de Tipos - Agora Horizontal e Ordenado */}
+        {/* Gráfico de Tipos - Agora com cores elegantes */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <BarChart3 className="h-5 w-5 mr-2 text-green-600" />
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
               Distribuição por Tipo
             </CardTitle>
             <CardDescription>Registros por tipo (ordenado do maior para o menor)</CardDescription>
@@ -598,18 +615,18 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Gráfico de Obras (apenas admin e quando não há filtro específico) */}
+      {/* Gráfico de Obras - Agora com barras menores */}
       {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
-              <Building2 className="h-5 w-5 mr-2 text-purple-600" />
+              <Building2 className="h-5 w-5 mr-2 text-blue-600" />
               Registros por Obra
             </CardTitle>
             <CardDescription>Distribuição de registros entre as obras</CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-80">
+            <div className="h-64">
               <Bar {...graficoObrasConfig} />
             </div>
           </CardContent>
