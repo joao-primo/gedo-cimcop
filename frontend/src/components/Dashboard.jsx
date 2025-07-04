@@ -50,14 +50,21 @@ const Dashboard = () => {
   })
   const [obras, setObras] = useState([])
   const [obraSelecionada, setObraSelecionada] = useState("todas")
+  const [loadingObras, setLoadingObras] = useState(false)
 
   const carregarObras = async () => {
     if (isAdmin()) {
       try {
+        setLoadingObras(true)
+        console.log("Carregando obras para filtro...")
         const response = await obrasAPI.listar()
+        console.log("Obras carregadas:", response.data)
         setObras(response.data || [])
       } catch (error) {
         console.error("Erro ao carregar obras:", error)
+        setObras([])
+      } finally {
+        setLoadingObras(false)
       }
     }
   }
@@ -76,7 +83,8 @@ const Dashboard = () => {
           console.error("Erro ao carregar estatísticas:", err)
           return { data: {} }
         }),
-        dashboardAPI.getAtividadesRecentes(8).catch((err) => {
+        dashboardAPI.getAtividadesRecentes(5).catch((err) => {
+          // Mudou de 8 para 5
           console.error("Erro ao carregar atividades:", err)
           return { data: { atividades_recentes: [] } }
         }),
@@ -101,6 +109,13 @@ const Dashboard = () => {
             total_registros_obra_selecionada: obraEspecifica.count,
           }
         }
+      }
+
+      // Ordenar registros por tipo do maior para o menor
+      if (estatisticasFiltradas.registros_por_tipo) {
+        estatisticasFiltradas.registros_por_tipo = estatisticasFiltradas.registros_por_tipo.sort(
+          (a, b) => b.count - a.count,
+        )
       }
 
       console.log("Dados carregados:", {
@@ -129,12 +144,15 @@ const Dashboard = () => {
   useEffect(() => {
     if (user) {
       console.log("Usuário logado, carregando dashboard para:", user)
-      carregarObras()
+      if (isAdmin()) {
+        carregarObras()
+      }
       carregarDados()
     }
   }, [user])
 
   const handleObraChange = (value) => {
+    console.log("Obra selecionada:", value)
     setObraSelecionada(value)
     const obraId = value === "todas" ? null : value
     carregarDados(obraId)
@@ -186,6 +204,11 @@ const Dashboard = () => {
         },
         title: {
           display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.parsed.x} registros`,
+          },
         },
       },
       scales: {
@@ -381,12 +404,12 @@ const Dashboard = () => {
         </div>
         <div className="flex items-center gap-3">
           {/* Filtro por Obra (apenas para admin) */}
-          {isAdmin() && obras.length > 0 && (
+          {isAdmin() && (
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-gray-500" />
-              <Select value={obraSelecionada} onValueChange={handleObraChange}>
+              <Select value={obraSelecionada} onValueChange={handleObraChange} disabled={loadingObras}>
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder="Filtrar por obra" />
+                  <SelectValue placeholder={loadingObras ? "Carregando..." : "Filtrar por obra"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas as obras</SelectItem>
@@ -415,6 +438,13 @@ const Dashboard = () => {
           <AlertTriangle className="h-4 w-4 text-red-600" />
           <AlertDescription className="text-red-700">{dados.error}</AlertDescription>
         </Alert>
+      )}
+
+      {/* Debug info para admin */}
+      {isAdmin() && process.env.NODE_ENV === "development" && (
+        <div className="text-xs text-gray-500 bg-gray-50 p-2 rounded">
+          Debug: Admin={isAdmin().toString()}, Obras carregadas={obras.length}, Loading obras={loadingObras.toString()}
+        </div>
       )}
 
       {/* Cards de Estatísticas Principais */}
@@ -514,14 +544,14 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico de Tipos - Agora Horizontal */}
+        {/* Gráfico de Tipos - Agora Horizontal e Ordenado */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
               <BarChart3 className="h-5 w-5 mr-2 text-green-600" />
               Distribuição por Tipo
             </CardTitle>
-            <CardDescription>Registros por tipo de documento</CardDescription>
+            <CardDescription>Registros por tipo (ordenado do maior para o menor)</CardDescription>
           </CardHeader>
           <CardContent>
             {dados.estatisticas.registros_por_tipo?.length > 0 ? (
@@ -558,7 +588,7 @@ const Dashboard = () => {
         </Card>
       )}
 
-      {/* Atividades Recentes Melhoradas */}
+      {/* Atividades Recentes - Agora 5 em vez de 8 */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">
@@ -566,7 +596,7 @@ const Dashboard = () => {
             Atividades Recentes
           </CardTitle>
           <CardDescription>
-            Últimos registros criados no sistema
+            Últimas 5 atividades criadas no sistema
             {obraSelecionada !== "todas" && <span className="ml-2 text-blue-600">• Filtrado por obra selecionada</span>}
           </CardDescription>
         </CardHeader>
