@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { dashboardAPI, obrasAPI } from "../services/api"
+import { dashboardAPI, pesquisaAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -48,24 +48,36 @@ const Dashboard = () => {
     loading: true,
     error: "",
   })
-  const [obras, setObras] = useState([])
+  const [filtros, setFiltros] = useState({
+    obras: [],
+    tipos_registro: [],
+    autores: [],
+  })
   const [obraSelecionada, setObraSelecionada] = useState("todas")
-  const [loadingObras, setLoadingObras] = useState(false)
+  const [loadingFiltros, setLoadingFiltros] = useState(false)
 
-  const carregarObras = async () => {
+  const carregarFiltros = async () => {
     if (isAdmin()) {
       try {
-        setLoadingObras(true)
-        console.log("Carregando obras para filtro...")
-        const response = await obrasAPI.listar()
-        console.log("Obras carregadas:", response.data)
-        // Garantir que sempre seja um array
-        setObras(Array.isArray(response.data) ? response.data : [])
+        setLoadingFiltros(true)
+        console.log("Carregando filtros para dashboard...")
+        const response = await pesquisaAPI.getFiltros()
+        console.log("Filtros carregados:", response.data)
+
+        setFiltros({
+          obras: response.data.obras || [],
+          tipos_registro: response.data.tipos_registro || [],
+          autores: response.data.autores || [],
+        })
       } catch (error) {
-        console.error("Erro ao carregar obras:", error)
-        setObras([])
+        console.error("Erro ao carregar filtros:", error)
+        setFiltros({
+          obras: [],
+          tipos_registro: [],
+          autores: [],
+        })
       } finally {
-        setLoadingObras(false)
+        setLoadingFiltros(false)
       }
     }
   }
@@ -153,7 +165,7 @@ const Dashboard = () => {
     if (user) {
       console.log("Usuário logado, carregando dashboard para:", user)
       if (isAdmin()) {
-        carregarObras()
+        carregarFiltros()
       }
       carregarDados()
     }
@@ -426,17 +438,17 @@ const Dashboard = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Filtro por Obra (apenas para admin) */}
+          {/* Filtro por Obra (apenas para admin) - Usando o mesmo padrão da Pesquisa */}
           {isAdmin() && (
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-gray-500" />
-              <Select value={obraSelecionada} onValueChange={handleObraChange} disabled={loadingObras}>
+              <Select value={obraSelecionada} onValueChange={handleObraChange} disabled={loadingFiltros}>
                 <SelectTrigger className="w-48">
-                  <SelectValue placeholder={loadingObras ? "Carregando..." : "Filtrar por obra"} />
+                  <SelectValue placeholder={loadingFiltros ? "Carregando..." : "Filtrar por obra"} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="todas">Todas as obras</SelectItem>
-                  {obras.map((obra) => (
+                  {filtros.obras.map((obra) => (
                     <SelectItem key={obra.id} value={obra.id.toString()}>
                       {obra.nome}
                     </SelectItem>
