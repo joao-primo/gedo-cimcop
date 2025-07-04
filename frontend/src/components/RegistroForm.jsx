@@ -1,209 +1,347 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useNavigate } from "react-router-dom"
+import { useEffect, useState } from "react"
+import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI, classificacoesAPI } from "../services/api"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
-import { toast } from "sonner"
-import { Save, ArrowLeft, Upload, X } from "lucide-react"
-import api from "../services/api"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { FileText, Upload, AlertTriangle, CheckCircle, Loader2, Building2, Calendar, Hash } from "lucide-react"
 
-const RegistroForm = () => {
-  const navigate = useNavigate()
-  const [loading, setLoading] = useState(false)
+export default function RegistroForm() {
+  const [tipos, setTipos] = useState([])
   const [obras, setObras] = useState([])
-  const [tiposRegistro, setTiposRegistro] = useState([])
-  const [classificacoes, setClassificacoes] = useState([])
-  const [grupos, setGrupos] = useState([])
-  const [subgrupos, setSubgrupos] = useState([])
-  const [selectedFiles, setSelectedFiles] = useState([])
-
+  const [classificacoes, setClassificacoes] = useState({})
+  const [user, setUser] = useState(null)
+  const [obraSuspensa, setObraSuspensa] = useState(false)
+  const [loading, setLoading] = useState(false)
   const [formData, setFormData] = useState({
-    obra_id: "",
+    titulo: "",
+    tipo_registro: "",
     tipo_registro_id: "",
+    data_registro: "",
+    codigo_numero: "",
     descricao: "",
-    observacoes: "",
+    anexo: null,
+    obra_id: "",
     classificacao_grupo: "",
     classificacao_subgrupo: "",
   })
+  const [mensagem, setMensagem] = useState({ tipo: "", texto: "" })
 
   useEffect(() => {
-    fetchInitialData()
+    loadInitialData()
   }, [])
 
-  useEffect(() => {
-    // Quando o grupo muda, atualizar os subgrupos disponíveis
-    if (formData.classificacao_grupo) {
-      const subgruposDoGrupo = classificacoes.filter((c) => c.grupo === formData.classificacao_grupo)
-      setSubgrupos(subgruposDoGrupo)
+  const loadInitialData = async () => {
+    try {
+      const tiposRes = await tiposRegistroAPI.listar()
+      setTipos(tiposRes.data.tipos_registro || [])
 
-      // Limpar subgrupo se não for válido para o novo grupo
-      if (formData.classificacao_subgrupo) {
-        const subgrupoValido = subgruposDoGrupo.find((s) => s.subgrupo === formData.classificacao_subgrupo)
-        if (!subgrupoValido) {
-          setFormData((prev) => ({ ...prev, classificacao_subgrupo: "" }))
+      // Carregar classificações
+      const classificacoesRes = await classificacoesAPI.listar()
+      setClassificacoes(classificacoesRes.data.classificacoes || {})
+
+      const userRes = await authAPI.me()
+      const userData = userRes.data.user
+      setUser(userData)
+
+      if (userData.role === "administrador") {
+        const obrasRes = await obrasAPI.listar()
+        setObras(obrasRes.data.obras || [])
+      } else {
+        setFormData((prev) => ({ ...prev, obra_id: userData.obra_id?.toString() || "" }))
+
+        if (userData.obra_id) {
+          const obraRes = await obrasAPI.obter(userData.obra_id)
+          if (obraRes.data.obra?.status === "Suspensa") {
+            setObraSuspensa(true)
+          }
         }
       }
-    } else {
-      setSubgrupos([])
-      setFormData((prev) => ({ ...prev, classificacao_subgrupo: "" }))
-    }
-  }, [formData.classificacao_grupo, classificacoes])
-
-  const fetchInitialData = async () => {
-    try {
-      const [obrasRes, tiposRes, classificacoesRes] = await Promise.all([
-        api.get("/obras/"),
-        api.get("/tipos-registro/"),
-        api.get("/classificacoes/"),
-      ])
-
-      setObras(obrasRes.data || [])
-      setTiposRegistro(tiposRes.data || [])
-      setClassificacoes(classificacoesRes.data || [])
-
-      // Extrair grupos únicos
-      const gruposUnicos = [...new Set((classificacoesRes.data || []).map((c) => c.grupo))].filter(Boolean).sort()
-      setGrupos(gruposUnicos)
     } catch (error) {
-      console.error("Erro ao carregar dados:", error)
-      toast.error("Erro ao carregar dados do formulário")
+      console.error("Erro ao carregar dados iniciais:", error)
+      setMensagem({ tipo: "error", texto: "Erro ao carregar dados iniciais." })
     }
   }
 
-  const handleInputChange = (field, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      [field]: value,
-    }))
+  const handleChange = (e) => {
+    const { name, value, files } = e.target
+    if (name === "anexo") {
+      setFormData({ ...formData, anexo: files[0] })
+    } else {
+      setFormData({ ...formData, [name]: value })
+    }
   }
 
-  const handleFileChange = (event) => {
-    const files = Array.from(event.target.files)
-    setSelectedFiles((prev) => [...prev, ...files])
+  const handleSelectChange = (name, value) => {
+    setFormData((prev) => {
+      const newData = { ...prev, [name]: value }
+
+      // Se mudou o grupo, limpar o subgrupo
+      if (name === "classificacao_grupo") {
+        newData.classificacao_subgrupo = ""
+      }
+
+      return newData
+    })
   }
 
-  const removeFile = (index) => {
-    setSelectedFiles((prev) => prev.filter((_, i) => i !== index))
+  const handleTipoRegistroChange = (value) => {
+    const tipoSelecionado = tipos.find((t) => t.id.toString() === value)
+
+    if (tipoSelecionado) {
+      setFormData((prev) => ({
+        ...prev,
+        tipo_registro_id: value,
+        tipo_registro: tipoSelecionado.nome,
+      }))
+    }
   }
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (obraSuspensa) return
 
-    if (!formData.obra_id || !formData.tipo_registro_id || !formData.descricao) {
-      toast.error("Preencha todos os campos obrigatórios")
-      return
-    }
+    console.log("📤 Dados do formulário antes do envio:", formData)
 
     setLoading(true)
+    setMensagem({ tipo: "", texto: "" })
+
+    // Construir FormData corretamente
+    const data = new FormData()
+
+    // Campos obrigatórios
+    if (formData.titulo) data.append("titulo", formData.titulo)
+    if (formData.tipo_registro) data.append("tipo_registro", formData.tipo_registro)
+    if (formData.tipo_registro_id) data.append("tipo_registro_id", formData.tipo_registro_id)
+    if (formData.data_registro) data.append("data_registro", formData.data_registro)
+    if (formData.codigo_numero) data.append("codigo_numero", formData.codigo_numero)
+    if (formData.descricao) data.append("descricao", formData.descricao)
+    if (formData.obra_id) data.append("obra_id", formData.obra_id)
+    if (formData.classificacao_grupo) data.append("classificacao_grupo", formData.classificacao_grupo)
+    if (formData.classificacao_subgrupo) data.append("classificacao_subgrupo", formData.classificacao_subgrupo)
+
+    // Anexo (opcional)
+    if (formData.anexo) {
+      data.append("anexo", formData.anexo)
+    }
+
+    // Debug: Mostrar o que está sendo enviado
+    console.log("📎 Dados sendo enviados:")
+    for (const [key, value] of data.entries()) {
+      console.log(`  ${key}: ${value}`)
+    }
 
     try {
-      const submitData = new FormData()
+      console.log("💾 Criando registro...")
+      const response = await registrosAPI.criar(data)
+      console.log("✅ Resposta do servidor:", response.data)
+      setMensagem({ tipo: "success", texto: "Registro criado com sucesso!" })
 
-      // Adicionar dados do formulário
-      Object.keys(formData).forEach((key) => {
-        if (formData[key]) {
-          submitData.append(key, formData[key])
-        }
+      // Reset form
+      setFormData({
+        titulo: "",
+        tipo_registro: "",
+        tipo_registro_id: "",
+        data_registro: "",
+        codigo_numero: "",
+        descricao: "",
+        anexo: null,
+        obra_id: user?.role === "administrador" ? "" : user?.obra_id?.toString() || "",
+        classificacao_grupo: "",
+        classificacao_subgrupo: "",
       })
 
-      // Adicionar arquivos
-      selectedFiles.forEach((file) => {
-        submitData.append("arquivos", file)
+      // Reset file input
+      const fileInput = document.querySelector('input[type="file"]')
+      if (fileInput) fileInput.value = ""
+    } catch (err) {
+      console.error("❌ Erro completo:", err)
+      console.error("❌ Resposta do erro:", err.response?.data)
+      setMensagem({
+        tipo: "error",
+        texto: err.response?.data?.message || "Erro ao criar registro.",
       })
-
-      await api.post("/registros/", submitData, {
-        headers: {
-          "Content-Type": "multipart/form-data",
-        },
-      })
-
-      toast.success("Registro criado com sucesso!")
-      navigate("/dashboard")
-    } catch (error) {
-      console.error("Erro ao criar registro:", error)
-      toast.error(error.response?.data?.detail || "Erro ao criar registro")
     } finally {
       setLoading(false)
     }
   }
 
-  return (
-    <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center space-x-4">
-          <Button variant="outline" size="sm" onClick={() => navigate("/dashboard")}>
-            <ArrowLeft className="h-4 w-4 mr-2" />
-            Voltar
-          </Button>
-          <div>
-            <h1 className="text-2xl font-bold text-gray-900">Novo Registro</h1>
-            <p className="text-gray-600">Criar um novo registro no sistema</p>
+  if (obraSuspensa) {
+    return (
+      <div className="max-w-2xl mx-auto p-6">
+        <Alert className="border-yellow-200 bg-yellow-50">
+          <AlertTriangle className="h-4 w-4 text-yellow-600" />
+          <div className="ml-2">
+            <h3 className="text-lg font-semibold text-yellow-800">Registro Bloqueado</h3>
+            <p className="text-yellow-700 mt-1">
+              A criação de registros está desabilitada porque a obra está <strong>suspensa</strong>.
+            </p>
           </div>
-        </div>
+        </Alert>
+      </div>
+    )
+  }
+
+  return (
+    <div className="max-w-4xl mx-auto p-6">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Novo Registro</h1>
+        <p className="text-gray-600">Crie um novo registro de documento</p>
       </div>
 
-      {/* Formulário */}
       <Card>
         <CardHeader>
-          <CardTitle>Informações do Registro</CardTitle>
+          <div className="flex items-center space-x-2">
+            <FileText className="h-6 w-6 text-blue-600" />
+            <div>
+              <CardTitle className="text-2xl">Novo Registro</CardTitle>
+              <CardDescription>Preencha os dados para criar um novo registro de documento</CardDescription>
+            </div>
+          </div>
         </CardHeader>
+
         <CardContent>
+          {mensagem.texto && (
+            <Alert
+              className={`mb-6 ${
+                mensagem.tipo === "success" ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"
+              }`}
+            >
+              {mensagem.tipo === "success" ? (
+                <CheckCircle className="h-4 w-4 text-green-600" />
+              ) : (
+                <AlertTriangle className="h-4 w-4 text-red-600" />
+              )}
+              <AlertDescription className={mensagem.tipo === "success" ? "text-green-700" : "text-red-700"}>
+                {mensagem.texto}
+              </AlertDescription>
+            </Alert>
+          )}
+
           <form onSubmit={handleSubmit} className="space-y-6">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Obra */}
+            {/* Obra Selection (Admin only) */}
+            {user?.role === "administrador" && (
               <div className="space-y-2">
-                <Label htmlFor="obra">Obra *</Label>
-                <Select value={formData.obra_id} onValueChange={(value) => handleInputChange("obra_id", value)}>
+                <Label className="flex items-center space-x-2">
+                  <Building2 className="h-4 w-4" />
+                  <span>Obra *</span>
+                </Label>
+                <Select
+                  value={formData.obra_id}
+                  onValueChange={(value) => handleSelectChange("obra_id", value)}
+                  required
+                >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione uma obra" />
+                    <SelectValue placeholder="Selecione a obra" />
                   </SelectTrigger>
                   <SelectContent>
                     {obras.map((obra) => (
                       <SelectItem key={obra.id} value={obra.id.toString()}>
-                        {obra.nome}
+                        <div className="flex items-center space-x-2">
+                          <Badge variant="outline">{obra.codigo}</Badge>
+                          <span>{obra.nome}</span>
+                        </div>
                       </SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
+              </div>
+            )}
+
+            {/* Grid Layout for Form Fields */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              {/* Título */}
+              <div className="space-y-2">
+                <Label htmlFor="titulo">Título *</Label>
+                <Input
+                  id="titulo"
+                  name="titulo"
+                  value={formData.titulo}
+                  onChange={handleChange}
+                  placeholder="Digite o título do registro"
+                  required
+                />
               </div>
 
               {/* Tipo de Registro */}
               <div className="space-y-2">
-                <Label htmlFor="tipo">Tipo de Registro *</Label>
-                <Select
-                  value={formData.tipo_registro_id}
-                  onValueChange={(value) => handleInputChange("tipo_registro_id", value)}
-                >
+                <Label>Tipo de Registro *</Label>
+                <Select value={formData.tipo_registro_id} onValueChange={handleTipoRegistroChange} required>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione um tipo" />
+                    <SelectValue placeholder={tipos.length === 0 ? "Nenhum tipo disponível" : "Selecione o tipo"} />
                   </SelectTrigger>
                   <SelectContent>
-                    {tiposRegistro.map((tipo) => (
-                      <SelectItem key={tipo.id} value={tipo.id.toString()}>
-                        {tipo.nome}
-                      </SelectItem>
-                    ))}
+                    {tipos.length === 0 ? (
+                      <div className="p-2 text-sm text-gray-500 text-center">Nenhum tipo de registro disponível</div>
+                    ) : (
+                      tipos
+                        .filter((tipo) => tipo && tipo.id && tipo.nome)
+                        .map((tipo) => {
+                          return (
+                            <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                              {tipo.nome}
+                            </SelectItem>
+                          )
+                        })
+                    )}
                   </SelectContent>
                 </Select>
+                {tipos.length === 0 && <p className="text-sm text-red-600">⚠️ Nenhum tipo de registro encontrado</p>}
               </div>
 
+              {/* Data do Registro */}
+              <div className="space-y-2">
+                <Label className="flex items-center space-x-2">
+                  <Calendar className="h-4 w-4" />
+                  <span>Data do Registro *</span>
+                </Label>
+                <Input
+                  type="date"
+                  name="data_registro"
+                  value={formData.data_registro}
+                  onChange={handleChange}
+                  required
+                />
+              </div>
+
+              {/* Código/Número */}
+              <div className="space-y-2">
+                <Label className="flex items-center space-x-2">
+                  <Hash className="h-4 w-4" />
+                  <span>Código/Número *</span>
+                </Label>
+                <Input
+                  name="codigo_numero"
+                  value={formData.codigo_numero}
+                  onChange={handleChange}
+                  placeholder="Ex: DOC-001, REG-2024-001"
+                  required
+                />
+              </div>
+            </div>
+
+            {/* Classificação */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Classificação Grupo */}
               <div className="space-y-2">
-                <Label htmlFor="grupo">Classificação Grupo</Label>
+                <Label>Grupo *</Label>
                 <Select
                   value={formData.classificacao_grupo}
-                  onValueChange={(value) => handleInputChange("classificacao_grupo", value)}
+                  onValueChange={(value) => handleSelectChange("classificacao_grupo", value)}
+                  required
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione um grupo" />
+                    <SelectValue placeholder="Selecione o grupo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {grupos.map((grupo) => (
+                    {Object.keys(classificacoes).map((grupo) => (
                       <SelectItem key={grupo} value={grupo}>
                         {grupo}
                       </SelectItem>
@@ -214,21 +352,28 @@ const RegistroForm = () => {
 
               {/* Classificação Subgrupo */}
               <div className="space-y-2">
-                <Label htmlFor="subgrupo">Classificação Subgrupo</Label>
+                <Label>Subgrupo *</Label>
                 <Select
                   value={formData.classificacao_subgrupo}
-                  onValueChange={(value) => handleInputChange("classificacao_subgrupo", value)}
+                  onValueChange={(value) => handleSelectChange("classificacao_subgrupo", value)}
+                  required
                   disabled={!formData.classificacao_grupo}
                 >
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecione um subgrupo" />
+                    <SelectValue
+                      placeholder={
+                        !formData.classificacao_grupo ? "Selecione um grupo primeiro" : "Selecione o subgrupo"
+                      }
+                    />
                   </SelectTrigger>
                   <SelectContent>
-                    {subgrupos.map((item) => (
-                      <SelectItem key={item.id} value={item.subgrupo}>
-                        {item.subgrupo}
-                      </SelectItem>
-                    ))}
+                    {formData.classificacao_grupo &&
+                      classificacoes[formData.classificacao_grupo] &&
+                      Object.keys(classificacoes[formData.classificacao_grupo]).map((subgrupo) => (
+                        <SelectItem key={subgrupo} value={subgrupo}>
+                          {subgrupo}
+                        </SelectItem>
+                      ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -236,83 +381,57 @@ const RegistroForm = () => {
 
             {/* Descrição */}
             <div className="space-y-2">
-              <Label htmlFor="descricao">Descrição *</Label>
+              <Label htmlFor="descricao">Descrição Detalhada *</Label>
               <Textarea
                 id="descricao"
-                placeholder="Descreva o registro..."
+                name="descricao"
                 value={formData.descricao}
-                onChange={(e) => handleInputChange("descricao", e.target.value)}
+                onChange={handleChange}
                 rows={4}
+                placeholder="Descreva detalhadamente o conteúdo do registro..."
+                required
               />
             </div>
 
-            {/* Observações */}
+            {/* Anexo */}
             <div className="space-y-2">
-              <Label htmlFor="observacoes">Observações</Label>
-              <Textarea
-                id="observacoes"
-                placeholder="Observações adicionais..."
-                value={formData.observacoes}
-                onChange={(e) => handleInputChange("observacoes", e.target.value)}
-                rows={3}
-              />
-            </div>
-
-            {/* Upload de Arquivos */}
-            <div className="space-y-2">
-              <Label htmlFor="arquivos">Anexos</Label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6">
-                <div className="text-center">
-                  <Upload className="mx-auto h-12 w-12 text-gray-400" />
-                  <div className="mt-4">
-                    <label htmlFor="file-upload" className="cursor-pointer">
-                      <span className="mt-2 block text-sm font-medium text-gray-900">
-                        Clique para fazer upload ou arraste arquivos aqui
-                      </span>
-                      <input
-                        id="file-upload"
-                        name="file-upload"
-                        type="file"
-                        className="sr-only"
-                        multiple
-                        onChange={handleFileChange}
-                      />
-                    </label>
-                    <p className="mt-1 text-xs text-gray-500">PNG, JPG, PDF até 10MB cada</p>
+              <Label className="flex items-center space-x-2">
+                <Upload className="h-4 w-4" />
+                <span>Anexo</span>
+              </Label>
+              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
+                <input
+                  type="file"
+                  name="anexo"
+                  onChange={handleChange}
+                  className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                {formData.anexo && (
+                  <div className="mt-2 flex items-center space-x-2 text-sm text-gray-600">
+                    <CheckCircle className="h-4 w-4 text-green-500" />
+                    <span>Arquivo selecionado: {formData.anexo.name}</span>
                   </div>
-                </div>
+                )}
+                <p className="text-xs text-gray-500 mt-2">
+                  Tipos aceitos: PDF, DOC, DOCX, XLS, XLSX, TXT, PNG, JPG, JPEG, GIF
+                </p>
               </div>
-
-              {/* Lista de arquivos selecionados */}
-              {selectedFiles.length > 0 && (
-                <div className="mt-4 space-y-2">
-                  <Label>Arquivos selecionados:</Label>
-                  {selectedFiles.map((file, index) => (
-                    <div key={index} className="flex items-center justify-between p-2 bg-gray-50 rounded">
-                      <span className="text-sm text-gray-700">{file.name}</span>
-                      <Button type="button" variant="ghost" size="sm" onClick={() => removeFile(index)}>
-                        <X className="h-4 w-4" />
-                      </Button>
-                    </div>
-                  ))}
-                </div>
-              )}
             </div>
 
-            {/* Botões */}
-            <div className="flex justify-end space-x-4">
-              <Button type="button" variant="outline" onClick={() => navigate("/dashboard")}>
+            {/* Submit Button */}
+            <div className="flex justify-end space-x-4 pt-6 border-t">
+              <Button type="button" variant="outline" onClick={() => window.history.back()}>
                 Cancelar
               </Button>
-              <Button type="submit" disabled={loading}>
+              <Button type="submit" disabled={loading || !formData.tipo_registro_id}>
                 {loading ? (
                   <>
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
                     Salvando...
                   </>
                 ) : (
                   <>
-                    <Save className="h-4 w-4 mr-2" />
+                    <FileText className="mr-2 h-4 w-4" />
                     Salvar Registro
                   </>
                 )}
@@ -324,5 +443,3 @@ const RegistroForm = () => {
     </div>
   )
 }
-
-export default RegistroForm

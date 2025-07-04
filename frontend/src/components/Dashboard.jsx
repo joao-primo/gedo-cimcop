@@ -2,168 +2,498 @@
 
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
+import { dashboardAPI, pesquisaAPI } from "../services/api"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
+import { Alert, AlertDescription } from "@/components/ui/alert"
+import { Badge } from "@/components/ui/badge"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import {
-  BarChart,
-  Bar,
-  XAxis,
-  YAxis,
-  CartesianGrid,
+  FileText,
+  TrendingUp,
+  Clock,
+  RefreshCw,
+  Building2,
+  User,
+  Calendar,
+  BarChart3,
+  Activity,
+  Paperclip,
+  AlertTriangle,
+  Filter,
+} from "lucide-react"
+import {
+  Chart as ChartJS,
+  CategoryScale,
+  LinearScale,
+  BarElement,
+  Title,
   Tooltip,
-  ResponsiveContainer,
-  PieChart,
-  Pie,
-  Cell,
-  LineChart,
-  Line,
-} from "recharts"
-import { FileText, TrendingUp, Calendar, AlertCircle, CheckCircle, Clock, Activity } from "lucide-react"
+  Legend,
+  ArcElement,
+  PointElement,
+  LineElement,
+} from "chart.js"
+import { Bar, Line } from "react-chartjs-2"
+
+// Registrar componentes do Chart.js
+ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PointElement, LineElement)
 
 const Dashboard = () => {
-  const { user } = useAuth()
-  const [loading, setLoading] = useState(true)
-  const [error, setError] = useState(null)
-  const [estatisticas, setEstatisticas] = useState({
-    total_registros: 0,
-    registros_ultimos_30d: 0,
-    registros_por_tipo: [],
-    registros_por_classificacao: [],
-    registros_por_obra: [],
-    registros_anexos: { com_anexo: 0, sem_anexo: 0 },
+  const { user, isAdmin } = useAuth()
+  const [dados, setDados] = useState({
+    estatisticas: {},
+    atividades: [],
+    timeline: [],
+    loading: true,
+    error: "",
   })
-  const [atividadesRecentes, setAtividadesRecentes] = useState([])
-  const [timeline, setTimeline] = useState([])
+  const [filtros, setFiltros] = useState({
+    obras: [],
+    tipos_registro: [],
+    autores: [],
+  })
+  const [obraSelecionada, setObraSelecionada] = useState("todas")
+  const [loadingFiltros, setLoadingFiltros] = useState(false)
 
-  useEffect(() => {
-    carregarDados()
-  }, [])
-
-  const carregarDados = async () => {
-    try {
-      setLoading(true)
-      setError(null)
-
-      const token = localStorage.getItem("token")
-      const headers = {
-        Authorization: `Bearer ${token}`,
-        "Content-Type": "application/json",
-      }
-
-      // Carregar estatísticas
+  const carregarFiltros = async () => {
+    if (isAdmin()) {
       try {
-        const estatisticasResponse = await fetch("/api/dashboard/estatisticas", { headers })
-        if (estatisticasResponse.ok) {
-          const estatisticasData = await estatisticasResponse.json()
-          setEstatisticas(estatisticasData)
-        } else {
-          console.warn("Erro ao carregar estatísticas:", estatisticasResponse.status)
-          // Manter valores padrão
-        }
-      } catch (err) {
-        console.warn("Erro na requisição de estatísticas:", err)
-      }
+        setLoadingFiltros(true)
+        console.log("Carregando filtros para dashboard...")
+        const response = await pesquisaAPI.getFiltros()
+        console.log("Filtros carregados:", response.data)
 
-      // Carregar atividades recentes
-      try {
-        const atividadesResponse = await fetch("/api/dashboard/atividades-recentes?limit=5", { headers })
-        if (atividadesResponse.ok) {
-          const atividadesData = await atividadesResponse.json()
-          setAtividadesRecentes(atividadesData.atividades_recentes || [])
-        } else {
-          console.warn("Erro ao carregar atividades:", atividadesResponse.status)
-        }
-      } catch (err) {
-        console.warn("Erro na requisição de atividades:", err)
+        setFiltros({
+          obras: response.data.obras || [],
+          tipos_registro: response.data.tipos_registro || [],
+          autores: response.data.autores || [],
+        })
+      } catch (error) {
+        console.error("Erro ao carregar filtros:", error)
+        setFiltros({
+          obras: [],
+          tipos_registro: [],
+          autores: [],
+        })
+      } finally {
+        setLoadingFiltros(false)
       }
-
-      // Carregar timeline
-      try {
-        const timelineResponse = await fetch("/api/dashboard/timeline?dias=30", { headers })
-        if (timelineResponse.ok) {
-          const timelineData = await timelineResponse.json()
-          setTimeline(timelineData.timeline || [])
-        } else {
-          console.warn("Erro ao carregar timeline:", timelineResponse.status)
-        }
-      } catch (err) {
-        console.warn("Erro na requisição de timeline:", err)
-      }
-    } catch (err) {
-      console.error("Erro geral ao carregar dashboard:", err)
-      setError("Erro ao carregar dados do dashboard")
-    } finally {
-      setLoading(false)
     }
   }
 
-  // Cores para os gráficos
-  const COLORS = ["#3B82F6", "#10B981", "#F59E0B", "#EF4444", "#8B5CF6", "#06B6D4", "#84CC16", "#F97316"]
+  const carregarDados = async (obraId = null) => {
+    try {
+      console.log("Carregando dados do dashboard...", obraId ? `para obra ${obraId}` : "todas as obras")
+      setDados((prev) => ({ ...prev, loading: true, error: "" }))
 
-  // Cards de estatísticas
-  const StatCard = ({ title, value, icon: Icon, color = "blue", subtitle }) => (
-    <div className="bg-white rounded-lg shadow p-6">
-      <div className="flex items-center">
-        <div className={`flex-shrink-0 p-3 rounded-lg bg-${color}-100`}>
-          <Icon className={`h-6 w-6 text-${color}-600`} />
-        </div>
-        <div className="ml-4 flex-1">
-          <p className="text-sm font-medium text-gray-500">{title}</p>
-          <p className="text-2xl font-semibold text-gray-900">{value}</p>
-          {subtitle && <p className="text-sm text-gray-600 mt-1">{subtitle}</p>}
-        </div>
-      </div>
-    </div>
-  )
+      // Preparar parâmetros para as APIs
+      const timelineParams = obraId ? `30&obra_id=${obraId}` : "30"
 
-  if (loading) {
+      // Carregar dados em paralelo
+      const promises = [
+        dashboardAPI.getEstatisticas().catch((err) => {
+          console.error("Erro ao carregar estatísticas:", err)
+          return { data: {} }
+        }),
+        dashboardAPI.getAtividadesRecentes(5).catch((err) => {
+          console.error("Erro ao carregar atividades:", err)
+          return { data: { atividades_recentes: [] } }
+        }),
+        dashboardAPI.getTimeline(timelineParams).catch((err) => {
+          console.error("Erro ao carregar timeline:", err)
+          return { data: { timeline: [] } }
+        }),
+      ]
+
+      const [estatisticasRes, atividadesRes, timelineRes] = await Promise.all(promises)
+
+      // Filtrar estatísticas por obra se necessário
+      let estatisticasFiltradas = estatisticasRes.data || {}
+      if (obraId && estatisticasFiltradas.registros_por_obra) {
+        const obraEspecifica = estatisticasFiltradas.registros_por_obra.find(
+          (obra) => obra.obra_id === Number.parseInt(obraId),
+        )
+        if (obraEspecifica) {
+          estatisticasFiltradas = {
+            ...estatisticasFiltradas,
+            total_registros_obra_selecionada: obraEspecifica.count,
+          }
+        }
+      }
+
+      // Garantir que registros_por_tipo seja sempre um array e ordenar
+      if (estatisticasFiltradas.registros_por_tipo && Array.isArray(estatisticasFiltradas.registros_por_tipo)) {
+        // Ordenar do maior para o menor e pegar apenas os 10 primeiros
+        estatisticasFiltradas.registros_por_tipo = estatisticasFiltradas.registros_por_tipo
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10) // Limitar aos 10 tipos principais
+      } else {
+        estatisticasFiltradas.registros_por_tipo = []
+      }
+
+      // Garantir que registros_por_classificacao seja sempre um array
+      if (
+        estatisticasFiltradas.registros_por_classificacao &&
+        Array.isArray(estatisticasFiltradas.registros_por_classificacao)
+      ) {
+        estatisticasFiltradas.registros_por_classificacao = estatisticasFiltradas.registros_por_classificacao
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8) // Top 8 classificações
+      } else {
+        estatisticasFiltradas.registros_por_classificacao = []
+      }
+
+      // Garantir que registros_por_obra seja sempre um array
+      if (!Array.isArray(estatisticasFiltradas.registros_por_obra)) {
+        estatisticasFiltradas.registros_por_obra = []
+      }
+
+      console.log("Dados carregados:", {
+        estatisticas: estatisticasFiltradas,
+        atividades: atividadesRes.data?.atividades_recentes || [],
+        timeline: timelineRes.data?.timeline || [],
+      })
+
+      setDados({
+        estatisticas: estatisticasFiltradas,
+        atividades: Array.isArray(atividadesRes.data?.atividades_recentes)
+          ? atividadesRes.data.atividades_recentes
+          : [],
+        timeline: Array.isArray(timelineRes.data?.timeline) ? timelineRes.data.timeline : [],
+        loading: false,
+        error: "",
+      })
+    } catch (error) {
+      console.error("Erro geral ao carregar dashboard:", error)
+      setDados((prev) => ({
+        ...prev,
+        loading: false,
+        error: "Erro ao carregar dados do dashboard",
+      }))
+    }
+  }
+
+  useEffect(() => {
+    if (user) {
+      console.log("Usuário logado, carregando dashboard para:", user)
+      if (isAdmin()) {
+        carregarFiltros()
+      }
+      carregarDados()
+    }
+  }, [user])
+
+  const handleObraChange = (value) => {
+    console.log("Obra selecionada:", value)
+    setObraSelecionada(value)
+    const obraId = value === "todas" ? null : value
+    carregarDados(obraId)
+  }
+
+  // Função para gerar gradiente de cores baseado nos valores
+  const gerarGradienteAzul = (dados) => {
+    if (!dados || dados.length === 0) return []
+
+    // Encontrar o valor máximo e mínimo
+    const valores = dados.map((item) => item.count || 0)
+    const maxValor = Math.max(...valores)
+    const minValor = Math.min(...valores)
+
+    // Se todos os valores são iguais, usar cor média
+    if (maxValor === minValor) {
+      return dados.map(() => "#3b82f6") // Azul médio
+    }
+
+    // Gerar cores baseadas na posição relativa do valor
+    return dados.map((item) => {
+      const valor = item.count || 0
+      // Calcular a intensidade (0 a 1) baseada no valor
+      const intensidade = (valor - minValor) / (maxValor - minValor)
+
+      // Interpolar entre azul claro e azul escuro
+      // Azul claro: #93c5fd (RGB: 147, 197, 253)
+      // Azul escuro: #1e40af (RGB: 30, 64, 175)
+      const r = Math.round(147 - (147 - 30) * intensidade)
+      const g = Math.round(197 - (197 - 64) * intensidade)
+      const b = Math.round(253 - (253 - 175) * intensidade)
+
+      return `rgb(${r}, ${g}, ${b})`
+    })
+  }
+
+  // Configurações dos gráficos com proteção contra dados undefined
+  const registrosPorTipo = Array.isArray(dados.estatisticas.registros_por_tipo)
+    ? dados.estatisticas.registros_por_tipo
+    : []
+  const registrosPorClassificacao = Array.isArray(dados.estatisticas.registros_por_classificacao)
+    ? dados.estatisticas.registros_por_classificacao
+    : []
+  const timelineData = Array.isArray(dados.timeline) ? dados.timeline : []
+  const registrosPorObra = Array.isArray(dados.estatisticas.registros_por_obra)
+    ? dados.estatisticas.registros_por_obra
+    : []
+
+  const graficoTiposConfig = {
+    data: {
+      labels: registrosPorTipo.map((item) => item.tipo || "Sem tipo"),
+      datasets: [
+        {
+          label: "Registros",
+          data: registrosPorTipo.map((item) => item.count || 0),
+          backgroundColor: gerarGradienteAzul(registrosPorTipo),
+          borderWidth: 0,
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        title: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.parsed.x} registros`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+          },
+        },
+        y: {
+          ticks: {
+            font: {
+              size: 11,
+            },
+          },
+        },
+      },
+    },
+  }
+
+  const graficoClassificacaoConfig = {
+    data: {
+      labels: registrosPorClassificacao.map((item) => item.grupo || "Sem classificação"),
+      datasets: [
+        {
+          label: "Registros",
+          data: registrosPorClassificacao.map((item) => item.count || 0),
+          backgroundColor: gerarGradienteAzul(registrosPorClassificacao),
+          borderWidth: 0,
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        title: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.parsed.x} registros`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+          },
+        },
+        y: {
+          ticks: {
+            font: {
+              size: 11,
+            },
+          },
+        },
+      },
+    },
+  }
+
+  const graficoTimelineConfig = {
+    data: {
+      labels: timelineData.map((item) => {
+        try {
+          const date = new Date(item.data)
+          return date.toLocaleDateString("pt-BR", { day: "2-digit", month: "2-digit" })
+        } catch {
+          return "Data inválida"
+        }
+      }),
+      datasets: [
+        {
+          label: "Registros por Dia",
+          data: timelineData.map((item) => item.count || 0),
+          borderColor: "#3b82f6",
+          backgroundColor: "rgba(59, 130, 246, 0.1)",
+          tension: 0.4,
+          fill: true,
+          pointBackgroundColor: "#3b82f6",
+          pointBorderColor: "#ffffff",
+          pointBorderWidth: 2,
+          pointRadius: 4,
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            title: (context) => {
+              try {
+                const index = context[0].dataIndex
+                const date = new Date(timelineData[index].data)
+                return date.toLocaleDateString("pt-BR", {
+                  weekday: "long",
+                  day: "2-digit",
+                  month: "long",
+                  year: "numeric",
+                })
+              } catch {
+                return "Data inválida"
+              }
+            },
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+          },
+        },
+        x: {
+          ticks: {
+            maxRotation: 45,
+          },
+        },
+      },
+    },
+  }
+
+  const graficoObrasConfig = {
+    data: {
+      labels: registrosPorObra.map((item) => item.obra_nome || "Obra sem nome"),
+      datasets: [
+        {
+          label: "Registros por Obra",
+          data: registrosPorObra.map((item) => item.count || 0),
+          backgroundColor: "#3b82f6", // Azul padrão do sistema
+          borderRadius: 4,
+          borderSkipped: false,
+          barThickness: 40, // Controla a espessura das barras
+          maxBarThickness: 50, // Espessura máxima
+        },
+      ],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.parsed.y} registros`,
+          },
+        },
+      },
+      scales: {
+        y: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+          },
+        },
+        x: {
+          ticks: {
+            maxRotation: 45,
+            font: {
+              size: 11,
+            },
+          },
+        },
+      },
+      // Reduzir o espaçamento entre as barras
+      categoryPercentage: 0.7,
+      barPercentage: 0.8,
+    },
+  }
+
+  const formatarData = (dateString) => {
+    try {
+      return new Intl.DateTimeFormat("pt-BR", {
+        day: "2-digit",
+        month: "2-digit",
+        year: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      }).format(new Date(dateString))
+    } catch {
+      return "Data inválida"
+    }
+  }
+
+  // Loading state
+  if (dados.loading) {
     return (
       <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
+        <div className="flex justify-between items-center">
+          <div>
+            <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+            <p className="text-gray-600">Carregando dados...</p>
+          </div>
         </div>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {[1, 2, 3, 4].map((i) => (
-            <div key={i} className="bg-white rounded-lg shadow p-6 animate-pulse">
-              <div className="flex items-center">
-                <div className="flex-shrink-0 p-3 rounded-lg bg-gray-200 w-12 h-12"></div>
-                <div className="ml-4 flex-1">
+            <Card key={i}>
+              <CardContent className="p-6">
+                <div className="animate-pulse">
                   <div className="h-4 bg-gray-200 rounded w-3/4 mb-2"></div>
-                  <div className="h-6 bg-gray-200 rounded w-1/2"></div>
+                  <div className="h-8 bg-gray-200 rounded w-1/2"></div>
                 </div>
-              </div>
-            </div>
+              </CardContent>
+            </Card>
           ))}
-        </div>
-
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          <div className="bg-white rounded-lg shadow p-6 animate-pulse">
-            <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
-          </div>
-          <div className="bg-white rounded-lg shadow p-6 animate-pulse">
-            <div className="h-6 bg-gray-200 rounded w-1/3 mb-4"></div>
-            <div className="h-64 bg-gray-200 rounded"></div>
-          </div>
         </div>
       </div>
     )
   }
 
-  if (error) {
+  // Se não há usuário, mostrar mensagem
+  if (!user) {
     return (
-      <div className="space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-        </div>
-
-        <div className="bg-red-50 border border-red-200 rounded-lg p-4">
-          <div className="flex items-center">
-            <AlertCircle className="h-5 w-5 text-red-400 mr-2" />
-            <p className="text-red-700">{error}</p>
-          </div>
-          <button onClick={carregarDados} className="mt-2 text-sm text-red-600 hover:text-red-800 underline">
-            Tentar novamente
-          </button>
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="text-center">
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">Carregando...</h2>
+          <p className="text-gray-600">Verificando autenticação</p>
         </div>
       </div>
     )
@@ -171,172 +501,293 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header */}
-      <div className="flex items-center justify-between">
+      {/* Header Moderno */}
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Dashboard</h1>
-          <p className="text-gray-600">Bem-vindo, {user?.username}! Aqui está um resumo das atividades.</p>
+          <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
+          <p className="text-gray-600">
+            Bem-vindo, <span className="font-semibold">{user?.username}</span>!
+            {user?.role === "usuario_padrao" && user?.obra_id && (
+              <Badge variant="secondary" className="ml-2">
+                <Building2 className="h-3 w-3 mr-1" />
+                Obra #{user.obra_id}
+              </Badge>
+            )}
+          </p>
         </div>
-        <button
-          onClick={carregarDados}
-          className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-        >
-          <Activity className="h-4 w-4 mr-2" />
-          Atualizar
-        </button>
+        <div className="flex items-center gap-3">
+          {/* Filtro por Obra (apenas para admin) - Usando o mesmo padrão da Pesquisa */}
+          {isAdmin() && (
+            <div className="flex items-center gap-2">
+              <Filter className="h-4 w-4 text-gray-500" />
+              <Select value={obraSelecionada} onValueChange={handleObraChange} disabled={loadingFiltros}>
+                <SelectTrigger className="w-48">
+                  <SelectValue placeholder={loadingFiltros ? "Carregando..." : "Filtrar por obra"} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="todas">Todas as obras</SelectItem>
+                  {filtros.obras.map((obra) => (
+                    <SelectItem key={obra.id} value={obra.id.toString()}>
+                      {obra.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+          <Button
+            onClick={() => carregarDados(obraSelecionada === "todas" ? null : obraSelecionada)}
+            variant="outline"
+            size="sm"
+          >
+            <RefreshCw className="h-4 w-4 mr-2" />
+            Atualizar
+          </Button>
+        </div>
       </div>
 
-      {/* Cards de Estatísticas */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6">
-        <StatCard
-          title="Total de Registros"
-          value={estatisticas.total_registros.toLocaleString()}
-          icon={FileText}
-          color="blue"
-        />
-        <StatCard
-          title="Últimos 30 Dias"
-          value={estatisticas.registros_ultimos_30d.toLocaleString()}
-          icon={TrendingUp}
-          color="green"
-        />
-        <StatCard
-          title="Com Anexos"
-          value={estatisticas.registros_anexos.com_anexo.toLocaleString()}
-          icon={CheckCircle}
-          color="purple"
-          subtitle={`${estatisticas.registros_anexos.sem_anexo} sem anexos`}
-        />
-        <StatCard title="Atividades Hoje" value={atividadesRecentes.length} icon={Clock} color="orange" />
+      {dados.error && (
+        <Alert className="border-red-200 bg-red-50">
+          <AlertTriangle className="h-4 w-4 text-red-600" />
+          <AlertDescription className="text-red-700">{dados.error}</AlertDescription>
+        </Alert>
+      )}
+
+      {/* Cards de Estatísticas Principais */}
+      <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <Card className="border-l-4 border-l-blue-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Total de Registros</CardTitle>
+            <div className="p-2 bg-blue-100 rounded-full">
+              <FileText className="h-4 w-4 text-blue-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-gray-900">
+              {obraSelecionada !== "todas" && dados.estatisticas.total_registros_obra_selecionada !== undefined
+                ? dados.estatisticas.total_registros_obra_selecionada
+                : dados.estatisticas.total_registros || 0}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">
+              {obraSelecionada !== "todas" ? "Registros da obra selecionada" : "Todos os registros"}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-green-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Últimos 30 Dias</CardTitle>
+            <div className="p-2 bg-green-100 rounded-full">
+              <TrendingUp className="h-4 w-4 text-green-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-gray-900">{dados.estatisticas.registros_ultimos_30d || 0}</div>
+            <p className="text-xs text-gray-500 mt-1">Registros recentes</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-purple-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Registros com Anexo</CardTitle>
+            <div className="p-2 bg-purple-100 rounded-full">
+              <Paperclip className="h-4 w-4 text-purple-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-gray-900">
+              {dados.estatisticas.registros_anexos?.com_anexo || 0}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">De {dados.estatisticas.total_registros || 0} registros totais</p>
+          </CardContent>
+        </Card>
+
+        <Card className="border-l-4 border-l-orange-500">
+          <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+            <CardTitle className="text-sm font-medium text-gray-600">Média Diária</CardTitle>
+            <div className="p-2 bg-orange-100 rounded-full">
+              <Activity className="h-4 w-4 text-orange-600" />
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="text-3xl font-bold text-gray-900">
+              {timelineData.length > 0
+                ? Math.round(timelineData.reduce((acc, item) => acc + (item.count || 0), 0) / timelineData.length)
+                : 0}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">Registros/dia</p>
+          </CardContent>
+        </Card>
       </div>
 
       {/* Gráficos */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Gráfico de Registros por Tipo */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Registros por Tipo</h3>
-          {estatisticas.registros_por_tipo.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <BarChart data={estatisticas.registros_por_tipo}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="tipo" angle={-45} textAnchor="end" height={80} fontSize={12} />
-                <YAxis />
-                <Tooltip />
-                <Bar dataKey="count" fill="#3B82F6" />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500">Nenhum dado disponível</div>
-          )}
-        </div>
-
         {/* Gráfico de Timeline */}
-        <div className="bg-white rounded-lg shadow p-6">
-          <h3 className="text-lg font-medium text-gray-900 mb-4">Atividade dos Últimos 30 Dias</h3>
-          {timeline.length > 0 ? (
-            <ResponsiveContainer width="100%" height={300}>
-              <LineChart data={timeline}>
-                <CartesianGrid strokeDasharray="3 3" />
-                <XAxis dataKey="data" />
-                <YAxis />
-                <Tooltip />
-                <Line type="monotone" dataKey="count" stroke="#10B981" strokeWidth={2} />
-              </LineChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="h-64 flex items-center justify-center text-gray-500">Nenhum dado disponível</div>
-          )}
-        </div>
-      </div>
-
-      {/* Gráficos de Classificação e Obras (se disponíveis) */}
-      {(estatisticas.registros_por_classificacao.length > 0 || estatisticas.registros_por_obra.length > 0) && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-          {/* Gráfico de Classificações */}
-          {estatisticas.registros_por_classificacao.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Registros por Classificação</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <PieChart>
-                  <Pie
-                    data={estatisticas.registros_por_classificacao}
-                    cx="50%"
-                    cy="50%"
-                    labelLine={false}
-                    label={({ grupo, percent }) => `${grupo} (${(percent * 100).toFixed(0)}%)`}
-                    outerRadius={80}
-                    fill="#8884d8"
-                    dataKey="count"
-                  >
-                    {estatisticas.registros_por_classificacao.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <Tooltip />
-                </PieChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-
-          {/* Gráfico de Obras (apenas para admin) */}
-          {user?.role === "administrador" && estatisticas.registros_por_obra.length > 0 && (
-            <div className="bg-white rounded-lg shadow p-6">
-              <h3 className="text-lg font-medium text-gray-900 mb-4">Registros por Obra</h3>
-              <ResponsiveContainer width="100%" height={300}>
-                <BarChart data={estatisticas.registros_por_obra}>
-                  <CartesianGrid strokeDasharray="3 3" />
-                  <XAxis dataKey="obra_nome" angle={-45} textAnchor="end" height={80} fontSize={12} />
-                  <YAxis />
-                  <Tooltip />
-                  <Bar dataKey="count" fill="#8B5CF6" />
-                </BarChart>
-              </ResponsiveContainer>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Atividades Recentes */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <h3 className="text-lg font-medium text-gray-900">Atividades Recentes</h3>
-        </div>
-        <div className="divide-y divide-gray-200">
-          {atividadesRecentes.length > 0 ? (
-            atividadesRecentes.map((atividade, index) => (
-              <div key={index} className="px-6 py-4 hover:bg-gray-50">
-                <div className="flex items-center justify-between">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-gray-900 truncate">{atividade.titulo}</p>
-                    <p className="text-sm text-gray-500 truncate">{atividade.descricao}</p>
-                    <div className="mt-1 flex items-center text-xs text-gray-400">
-                      <Calendar className="h-3 w-3 mr-1" />
-                      {new Date(atividade.created_at).toLocaleDateString("pt-BR")}
-                      {atividade.obra && (
-                        <>
-                          <span className="mx-2">•</span>
-                          <span>{atividade.obra.nome}</span>
-                        </>
-                      )}
-                    </div>
-                  </div>
-                  <div className="flex-shrink-0">
-                    <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                      {atividade.tipo_registro}
-                    </span>
-                  </div>
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+              Atividade dos Últimos 30 Dias
+            </CardTitle>
+            <CardDescription>
+              Registros criados por dia
+              {obraSelecionada !== "todas" && (
+                <span className="ml-2 text-blue-600">• Filtrado por obra selecionada</span>
+              )}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            {timelineData.length > 0 ? (
+              <div className="h-80">
+                <Line {...graficoTimelineConfig} />
+              </div>
+            ) : (
+              <div className="h-80 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>Nenhum dado disponível</p>
                 </div>
               </div>
-            ))
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Gráfico de Tipos - Top 10 com gradiente baseado em valores */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+              Top 10 Tipos de Registro
+            </CardTitle>
+            <CardDescription>Os 10 tipos com mais registros</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {registrosPorTipo.length > 0 ? (
+              <div className="h-96">
+                <Bar {...graficoTiposConfig} />
+              </div>
+            ) : (
+              <div className="h-96 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>Nenhum dado disponível</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+      </div>
+
+      {/* Gráfico de Classificações */}
+      {registrosPorClassificacao.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+              Top 8 Classificações
+            </CardTitle>
+            <CardDescription>Distribuição de registros por grupo de classificação</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <Bar {...graficoClassificacaoConfig} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Gráfico de Obras - Agora com barras menores */}
+      {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Building2 className="h-5 w-5 mr-2 text-blue-600" />
+              Registros por Obra
+            </CardTitle>
+            <CardDescription>Distribuição de registros entre as obras</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <Bar {...graficoObrasConfig} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Atividades Recentes - Agora 5 em vez de 8 */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Clock className="h-5 w-5 mr-2 text-blue-600" />
+            Atividades Recentes
+          </CardTitle>
+          <CardDescription>
+            Últimas 5 atividades criadas no sistema
+            {obraSelecionada !== "todas" && <span className="ml-2 text-blue-600">• Filtrado por obra selecionada</span>}
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {!Array.isArray(dados.atividades) || dados.atividades.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-medium mb-2">Nenhuma atividade recente</h3>
+              <p className="text-sm">Quando novos registros forem criados, eles aparecerão aqui</p>
+            </div>
           ) : (
-            <div className="px-6 py-8 text-center">
-              <FileText className="mx-auto h-12 w-12 text-gray-400" />
-              <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhuma atividade recente</h3>
-              <p className="mt-1 text-sm text-gray-500">Quando houver novos registros, eles aparecerão aqui.</p>
+            <div className="space-y-4">
+              {dados.atividades.map((atividade, index) => (
+                <div
+                  key={atividade.id || index}
+                  className="flex items-start space-x-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all duration-200 hover:shadow-md"
+                >
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
+                      <FileText className="h-6 w-6 text-white" />
+                    </div>
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="text-base font-semibold text-gray-900 mb-1">
+                          {atividade.titulo || "Sem título"}
+                        </h4>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500 mb-2">
+                          <Badge variant="secondary" className="text-xs">
+                            {atividade.tipo_registro || "Sem tipo"}
+                          </Badge>
+                          {isAdmin() && atividade.obra_id && (
+                            <span className="flex items-center">
+                              <Building2 className="h-3 w-3 mr-1" />
+                              Obra #{atividade.obra_id}
+                            </span>
+                          )}
+                          <span className="flex items-center">
+                            <User className="h-3 w-3 mr-1" />
+                            {atividade.autor_nome || `Autor #${atividade.autor_id || "N/A"}`}
+                          </span>
+                        </div>
+                        {atividade.descricao && (
+                          <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                            {atividade.descricao.length > 120
+                              ? `${atividade.descricao.substring(0, 120)}...`
+                              : atividade.descricao}
+                          </p>
+                        )}
+                      </div>
+                      <div className="text-right ml-4">
+                        <span className="text-xs text-gray-500 flex items-center">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          {formatarData(atividade.created_at)}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              ))}
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }

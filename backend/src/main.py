@@ -9,6 +9,7 @@ from routes.user import user_bp
 from routes.configuracoes import configuracoes_bp, init_configuracoes
 from routes.importacao import importacao_bp
 from routes.password_reset import password_reset_bp
+from routes.classificacoes import classificacoes_bp
 from models.configuracao_workflow import ConfiguracaoWorkflow
 from models.configuracao import Configuracao, ConfiguracaoUsuario
 from models.registro import Registro
@@ -17,6 +18,7 @@ from models.obra import Obra
 from models.user import db, User
 from models.password_reset import PasswordResetToken
 from models.audit_log import AuditLog
+from models.classificacao import Classificacao
 from config import config
 from flask_cors import CORS
 from flask import Flask, send_from_directory, request
@@ -102,6 +104,7 @@ def create_app(config_name=None):
     app.register_blueprint(configuracoes_bp, url_prefix='/api/configuracoes')
     app.register_blueprint(importacao_bp, url_prefix='/api/importacao')
     app.register_blueprint(workflow_bp, url_prefix='/api/workflow')
+    app.register_blueprint(classificacoes_bp, url_prefix='/api/classificacoes')
 
     # Middleware CORS manual para casos especiais
     @app.before_request
@@ -212,6 +215,57 @@ def migrate_blob_columns():
         return False
 
 
+def migrate_classificacao_columns():
+    """Migração automática das colunas de classificação"""
+    try:
+        # Verificar se as colunas já existem
+        result = db.session.execute(text("""
+            SELECT column_name 
+            FROM information_schema.columns 
+            WHERE table_name = 'registros' 
+            AND column_name IN ('classificacao_grupo', 'classificacao_subgrupo', 'classificacao_id')
+        """))
+
+        existing_columns = [row[0] for row in result.fetchall()]
+
+        # Adicionar classificacao_grupo se não existir
+        if 'classificacao_grupo' not in existing_columns:
+            logger.info("➕ Adicionando coluna classificacao_grupo...")
+            db.session.execute(text("""
+                ALTER TABLE registros 
+                ADD COLUMN classificacao_grupo VARCHAR(100)
+            """))
+            logger.info("✅ Coluna classificacao_grupo adicionada")
+
+        # Adicionar classificacao_subgrupo se não existir
+        if 'classificacao_subgrupo' not in existing_columns:
+            logger.info("➕ Adicionando coluna classificacao_subgrupo...")
+            db.session.execute(text("""
+                ALTER TABLE registros 
+                ADD COLUMN classificacao_subgrupo VARCHAR(100)
+            """))
+            logger.info("✅ Coluna classificacao_subgrupo adicionada")
+
+        # Adicionar classificacao_id se não existir
+        if 'classificacao_id' not in existing_columns:
+            logger.info("➕ Adicionando coluna classificacao_id...")
+            db.session.execute(text("""
+                ALTER TABLE registros 
+                ADD COLUMN classificacao_id INTEGER
+            """))
+            logger.info("✅ Coluna classificacao_id adicionada")
+
+        # Commit das alterações
+        db.session.commit()
+        logger.info("🎉 Migração das colunas de Classificação concluída!")
+        return True
+
+    except Exception as e:
+        logger.error(f"❌ Erro na migração de Classificação: {str(e)}")
+        db.session.rollback()
+        return False
+
+
 def check_database_integrity():
     """Verificar integridade do banco de dados"""
     try:
@@ -268,6 +322,89 @@ def create_default_data():
             )
             db.session.add(tipo)
 
+    # NOVO: Criar classificações padrão
+    classificacoes_padrao = [
+        # Atividades em Campo
+        ("Atividades em Campo", "Aceleração de Atividades"),
+        ("Atividades em Campo", "Atividade em Campo"),
+        ("Atividades em Campo", "Autorização de Início de Atividade"),
+        ("Atividades em Campo", "Fim de Atividade"),
+        ("Atividades em Campo", "Início de Atividade"),
+        ("Atividades em Campo", "Paralisação de Atividade"),
+        ("Atividades em Campo", "Realocação de Equipe"),
+        ("Atividades em Campo", "Retomada de Atividade"),
+        ("Atividades em Campo", "Suspensão de Atividade"),
+
+        # Mobilização e Desmobilização
+        ("Mobilização e Desmobilização", "Desmobilização"),
+        ("Mobilização e Desmobilização", "Início da Mobilização"),
+        ("Mobilização e Desmobilização", "Mobilização"),
+
+        # Recursos e Logística
+        ("Recursos e Logística", "Atraso na Entrega de Materiais Contratada"),
+        ("Recursos e Logística", "Atraso na Entrega de Materiais Contratante"),
+        ("Recursos e Logística", "Dificuldade no Transporte de Mão de Obra"),
+        ("Recursos e Logística", "Entrega de Materiais/Equipamentos"),
+        ("Recursos e Logística", "Falta de Materiais/Equipamentos"),
+        ("Recursos e Logística", "Falta de Recursos Humanos"),
+        ("Recursos e Logística", "Material fora dos padrões Contratada"),
+        ("Recursos e Logística", "Material fora dos padrões Contratante"),
+
+        # Planejamento, Documentos e Licenças
+        ("Planejamento, Documentos e Licenças", "Assinatura de Ordem de Serviço"),
+        ("Planejamento, Documentos e Licenças", "Data Prevista para Atividade"),
+        ("Planejamento, Documentos e Licenças", "Entrega de Documentação"),
+        ("Planejamento, Documentos e Licenças", "Entrega de Plano"),
+        ("Planejamento, Documentos e Licenças", "Entrega de Projeto"),
+        ("Planejamento, Documentos e Licenças", "Falta de Autorização"),
+        ("Planejamento, Documentos e Licenças", "Falta de Licença"),
+        ("Planejamento, Documentos e Licenças", "Falta de Projeto"),
+        ("Planejamento, Documentos e Licenças", "Inconsistência de Projeto"),
+        ("Planejamento, Documentos e Licenças", "Solicitação de Plano"),
+
+        # Condições Externas e Interferências
+        ("Condições Externas e Interferências", "Chuvas e Impactos"),
+        ("Condições Externas e Interferências",
+         "COVID-19: Afastamento ou Impactos"),
+        ("Condições Externas e Interferências", "Interferências Externas"),
+        ("Condições Externas e Interferências", "Má Condição de Acesso"),
+        ("Condições Externas e Interferências", "Roubo ou Furto"),
+
+        # Desempenho, Qualidade e Anomalias
+        ("Desempenho, Qualidade e Anomalias", "Atraso na Mobilização Contratada"),
+        ("Desempenho, Qualidade e Anomalias", "Atraso na Mobilização Contratante"),
+        ("Desempenho, Qualidade e Anomalias", "Atraso nas Atividades em Campo"),
+        ("Desempenho, Qualidade e Anomalias", "Baixa Produtividade"),
+        ("Desempenho, Qualidade e Anomalias", "DDS"),
+        ("Desempenho, Qualidade e Anomalias", "Extraescopo / Aditivo"),
+        ("Desempenho, Qualidade e Anomalias", "Manutenção"),
+        ("Desempenho, Qualidade e Anomalias", "Manutenção Periódica"),
+        ("Desempenho, Qualidade e Anomalias", "Retrabalho"),
+
+        # Gestão Contratual e Relacionamento
+        ("Gestão Contratual e Relacionamento", "Análise pela Contratada"),
+        ("Gestão Contratual e Relacionamento", "Aprovação pelo Contratante"),
+        ("Gestão Contratual e Relacionamento", "Discordância do Contratante"),
+        ("Gestão Contratual e Relacionamento", "Divergência em Informação de RDO"),
+        ("Gestão Contratual e Relacionamento", "Pendências"),
+        ("Gestão Contratual e Relacionamento", "Solicitação da Contratada"),
+        ("Gestão Contratual e Relacionamento", "Solicitação do Contratante"),
+
+        # Administração e Monitoramento
+        ("Administração e Monitoramento",
+         "Abertura de PTS (Permissão de Trabalho Seguro)"),
+        ("Administração e Monitoramento", "Informação Geral"),
+        ("Administração e Monitoramento", "RDO em Atraso"),
+        ("Administração e Monitoramento", "Reunião"),
+    ]
+
+    for grupo, subgrupo in classificacoes_padrao:
+        classificacao_existente = db.session.query(Classificacao).filter_by(
+            grupo=grupo, subgrupo=subgrupo).first()
+        if not classificacao_existente:
+            classificacao = Classificacao(grupo=grupo, subgrupo=subgrupo)
+            db.session.add(classificacao)
+
     try:
         db.session.commit()
         init_configuracoes()
@@ -297,6 +434,9 @@ with app.app_context():
 
     # NOVO: Executar migração das colunas Blob
     migrate_blob_columns()
+
+    # NOVO: Executar migração das colunas de Classificação
+    migrate_classificacao_columns()
 
     if create_default_data():
         logger.info("📊 Dados padrão inicializados")
@@ -341,7 +481,8 @@ def health_check():
             'Configurações',
             'Importação em Lote',
             'Reset de Senha',
-            'Vercel Blob Storage'
+            'Vercel Blob Storage',
+            'Sistema de Classificação'
         ]
     }, 200
 

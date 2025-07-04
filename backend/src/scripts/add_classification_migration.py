@@ -1,278 +1,186 @@
-#!/usr/bin/env python3
 """
-Script para adicionar colunas de classificação à tabela registros
-e popular com classificações padrão
+Script para adicionar migração de classificação ao banco de dados
+Este script deve ser executado para adicionar as colunas de classificação
 """
 
-from backend.src import create_app, db
-from sqlalchemy import text, inspect
-import logging
-import sys
+from backend.src.config import Config
 import os
+import sys
+import psycopg2
+from datetime import datetime
+
+# Adicionar o diretório pai ao path para importar módulos
 sys.path.append(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 
-# Configurar logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
+def run_classification_migration():
+    """Executa a migração para adicionar colunas de classificação"""
 
-
-def check_column_exists(table_name, column_name):
-    """Verificar se uma coluna existe na tabela"""
     try:
-        inspector = inspect(db.engine)
-        columns = [col['name'] for col in inspector.get_columns(table_name)]
-        return column_name in columns
-    except Exception as e:
-        logger.error(f"Erro ao verificar coluna {column_name}: {str(e)}")
-        return False
+        # Conectar ao banco
+        conn = psycopg2.connect(Config.DATABASE_URL)
+        cursor = conn.cursor()
 
+        print("Iniciando migração de classificação...")
 
-def add_classification_columns():
-    """Adicionar colunas de classificação se não existirem"""
-    try:
-        # Verificar se as colunas já existem
-        grupo_exists = check_column_exists('registros', 'classificacao_grupo')
-        subgrupo_exists = check_column_exists(
-            'registros', 'classificacao_subgrupo')
+        # 1. Criar tabela de classificações se não existir
+        cursor.execute("""
+            CREATE TABLE IF NOT EXISTS classificacoes (
+                id SERIAL PRIMARY KEY,
+                grupo VARCHAR(100) NOT NULL,
+                subgrupo VARCHAR(200) NOT NULL,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(grupo, subgrupo)
+            );
+        """)
 
-        if not grupo_exists:
-            logger.info("Adicionando coluna classificacao_grupo...")
-            db.session.execute(text("""
-                ALTER TABLE registros 
-                ADD COLUMN classificacao_grupo VARCHAR(100)
-            """))
-            logger.info("Coluna classificacao_grupo adicionada com sucesso")
-        else:
-            logger.info("Coluna classificacao_grupo já existe")
+        # 2. Adicionar colunas de classificação na tabela registros se não existirem
+        cursor.execute("""
+            DO $$ 
+            BEGIN 
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='registros' AND column_name='classificacao_grupo') THEN
+                    ALTER TABLE registros ADD COLUMN classificacao_grupo VARCHAR(100);
+                END IF;
+                
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='registros' AND column_name='classificacao_subgrupo') THEN
+                    ALTER TABLE registros ADD COLUMN classificacao_subgrupo VARCHAR(200);
+                END IF;
+                
+                IF NOT EXISTS (SELECT 1 FROM information_schema.columns 
+                              WHERE table_name='registros' AND column_name='classificacao_id') THEN
+                    ALTER TABLE registros ADD COLUMN classificacao_id INTEGER REFERENCES classificacoes(id);
+                END IF;
+            END $$;
+        """)
 
-        if not subgrupo_exists:
-            logger.info("Adicionando coluna classificacao_subgrupo...")
-            db.session.execute(text("""
-                ALTER TABLE registros 
-                ADD COLUMN classificacao_subgrupo VARCHAR(100)
-            """))
-            logger.info("Coluna classificacao_subgrupo adicionada com sucesso")
-        else:
-            logger.info("Coluna classificacao_subgrupo já existe")
+        # 3. Inserir dados padrão de classificação
+        classificacoes_data = [
+            # 1. Atividades em Campo
+            ("Atividades em Campo", "Aceleração de Atividades"),
+            ("Atividades em Campo", "Atividade em Campo"),
+            ("Atividades em Campo", "Autorização de Início de Atividade"),
+            ("Atividades em Campo", "Fim de Atividade"),
+            ("Atividades em Campo", "Início de Atividade"),
+            ("Atividades em Campo", "Paralisação de Atividade"),
+            ("Atividades em Campo", "Realocação de Equipe"),
+            ("Atividades em Campo", "Retomada de Atividade"),
+            ("Atividades em Campo", "Suspensão de Atividade"),
 
-        # Verificar se coluna anexos_count existe
-        anexos_exists = check_column_exists('registros', 'anexos_count')
-        if not anexos_exists:
-            logger.info("Adicionando coluna anexos_count...")
-            db.session.execute(text("""
-                ALTER TABLE registros 
-                ADD COLUMN anexos_count INTEGER DEFAULT 0
-            """))
-            logger.info("Coluna anexos_count adicionada com sucesso")
-        else:
-            logger.info("Coluna anexos_count já existe")
+            # 2. Mobilização e Desmobilização
+            ("Mobilização e Desmobilização", "Desmobilização"),
+            ("Mobilização e Desmobilização", "Início da Mobilização"),
+            ("Mobilização e Desmobilização", "Mobilização"),
 
-        db.session.commit()
-        return True
+            # 3. Recursos e Logística
+            ("Recursos e Logística",
+             "Atraso na Entrega de Materiais Contratada/Contratante"),
+            ("Recursos e Logística", "Dificuldade no Transporte de Mão de Obra"),
+            ("Recursos e Logística", "Entrega de Materiais/Equipamentos"),
+            ("Recursos e Logística", "Falta de Materiais/Equipamentos"),
+            ("Recursos e Logística", "Falta de Recursos Humanos"),
+            ("Recursos e Logística", "Material fora dos padrões Contratada/Contratante"),
 
-    except Exception as e:
-        logger.error(f"Erro ao adicionar colunas: {str(e)}")
-        db.session.rollback()
-        return False
+            # 4. Planejamento, Documentos e Licenças
+            ("Planejamento, Documentos e Licenças",
+             "Assinatura de Ordem de Serviço"),
+            ("Planejamento, Documentos e Licenças", "Data Prevista para Atividade"),
+            ("Planejamento, Documentos e Licenças",
+             "Entrega de Documentação/Plano/Projeto"),
+            ("Planejamento, Documentos e Licenças",
+             "Falta de Autorização/Licença/Projeto"),
+            ("Planejamento, Documentos e Licenças", "Inconsistência de Projeto"),
+            ("Planejamento, Documentos e Licenças", "Solicitação de Plano"),
 
+            # 5. Condições Externas e Interferências
+            ("Condições Externas e Interferências", "Chuvas"),
+            ("Condições Externas e Interferências", "COVID-19"),
+            ("Condições Externas e Interferências", "Interferências"),
+            ("Condições Externas e Interferências", "Má Condição de Acesso"),
+            ("Condições Externas e Interferências", "Roubo ou Furto"),
 
-def create_classifications_table():
-    """Criar tabela de classificações se não existir"""
-    try:
-        # Verificar se a tabela já existe
-        inspector = inspect(db.engine)
-        tables = inspector.get_table_names()
+            # 6. Desempenho, Qualidade e Anomalias
+            ("Desempenho, Qualidade e Anomalias", "Atraso na Mobilização"),
+            ("Desempenho, Qualidade e Anomalias", "Atraso nas Atividades"),
+            ("Desempenho, Qualidade e Anomalias", "Baixa Produtividade"),
+            ("Desempenho, Qualidade e Anomalias", "DDS"),
+            ("Desempenho, Qualidade e Anomalias", "Extraescopo"),
+            ("Desempenho, Qualidade e Anomalias", "Manutenção"),
+            ("Desempenho, Qualidade e Anomalias", "Retrabalho"),
 
-        if 'classificacoes' not in tables:
-            logger.info("Criando tabela classificacoes...")
-            db.session.execute(text("""
-                CREATE TABLE classificacoes (
-                    id SERIAL PRIMARY KEY,
-                    grupo VARCHAR(100) NOT NULL,
-                    subgrupo VARCHAR(100) NOT NULL,
-                    descricao TEXT,
-                    ativo BOOLEAN DEFAULT TRUE,
-                    data_criacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(grupo, subgrupo)
-                )
-            """))
-            logger.info("Tabela classificacoes criada com sucesso")
-        else:
-            logger.info("Tabela classificacoes já existe")
+            # 7. Gestão Contratual e Relacionamento
+            ("Gestão Contratual e Relacionamento", "Análise"),
+            ("Gestão Contratual e Relacionamento", "Aprovação"),
+            ("Gestão Contratual e Relacionamento", "Discordância"),
+            ("Gestão Contratual e Relacionamento", "Divergência no RDO"),
+            ("Gestão Contratual e Relacionamento", "Pendências"),
+            ("Gestão Contratual e Relacionamento", "Solicitações"),
 
-        db.session.commit()
-        return True
-
-    except Exception as e:
-        logger.error(f"Erro ao criar tabela classificacoes: {str(e)}")
-        db.session.rollback()
-        return False
-
-
-def insert_default_classifications():
-    """Inserir classificações padrão"""
-    try:
-        # Verificar se já existem classificações
-        result = db.session.execute(
-            text("SELECT COUNT(*) FROM classificacoes")).scalar()
-
-        if result > 0:
-            logger.info("Classificações já existem na tabela")
-            return True
-
-        logger.info("Inserindo classificações padrão...")
-
-        classificacoes_padrao = [
-            ('Estrutural', 'Fundação', 'Elementos de fundação da estrutura'),
-            ('Estrutural', 'Pilares', 'Elementos verticais de sustentação'),
-            ('Estrutural', 'Vigas', 'Elementos horizontais de sustentação'),
-            ('Estrutural', 'Lajes', 'Elementos de cobertura horizontal'),
-            ('Arquitetônico', 'Fachada', 'Elementos da fachada do edifício'),
-            ('Arquitetônico', 'Interiores', 'Elementos internos do edifício'),
-            ('Arquitetônico', 'Cobertura', 'Elementos de cobertura'),
-            ('Instalações', 'Elétrica', 'Instalações elétricas'),
-            ('Instalações', 'Hidráulica', 'Instalações hidráulicas'),
-            ('Instalações', 'Ar Condicionado', 'Sistema de climatização'),
-            ('Acabamento', 'Pintura', 'Serviços de pintura'),
-            ('Acabamento', 'Revestimento', 'Revestimentos diversos'),
-            ('Acabamento', 'Piso', 'Pavimentação e pisos'),
-            ('Segurança', 'Proteção', 'Elementos de proteção e segurança'),
-            ('Segurança', 'Sinalização', 'Sinalização de segurança'),
-            ('Paisagismo', 'Jardim', 'Elementos de paisagismo'),
-            ('Paisagismo', 'Irrigação', 'Sistema de irrigação'),
-            ('Documentação', 'Projeto', 'Documentos de projeto'),
-            ('Documentação', 'Licenças', 'Licenças e aprovações'),
-            ('Qualidade', 'Inspeção', 'Registros de inspeção'),
-            ('Qualidade', 'Teste', 'Registros de testes e ensaios')
+            # 8. Administração e Monitoramento
+            ("Administração e Monitoramento", "Abertura de PTS"),
+            ("Administração e Monitoramento", "Informação Geral"),
+            ("Administração e Monitoramento", "RDO em Atraso"),
+            ("Administração e Monitoramento", "Reunião"),
         ]
 
-        for grupo, subgrupo, descricao in classificacoes_padrao:
-            db.session.execute(text("""
-                INSERT INTO classificacoes (grupo, subgrupo, descricao)
-                VALUES (:grupo, :subgrupo, :descricao)
+        # Inserir classificações (ignorar duplicatas)
+        for grupo, subgrupo in classificacoes_data:
+            cursor.execute("""
+                INSERT INTO classificacoes (grupo, subgrupo) 
+                VALUES (%s, %s) 
                 ON CONFLICT (grupo, subgrupo) DO NOTHING
-            """), {
-                'grupo': grupo,
-                'subgrupo': subgrupo,
-                'descricao': descricao
-            })
+            """, (grupo, subgrupo))
 
-        db.session.commit()
-        logger.info(
-            f"Inseridas {len(classificacoes_padrao)} classificações padrão")
+        # 4. Criar índices para melhor performance
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_registros_classificacao_grupo 
+            ON registros(classificacao_grupo);
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_registros_classificacao_id 
+            ON registros(classificacao_id);
+        """)
+
+        cursor.execute("""
+            CREATE INDEX IF NOT EXISTS idx_classificacoes_grupo 
+            ON classificacoes(grupo);
+        """)
+
+        # Commit das alterações
+        conn.commit()
+
+        # Verificar quantas classificações foram inseridas
+        cursor.execute("SELECT COUNT(*) FROM classificacoes")
+        total_classificacoes = cursor.fetchone()[0]
+
+        print(f"✅ Migração de classificação concluída com sucesso!")
+        print(f"📊 Total de classificações disponíveis: {total_classificacoes}")
+        print(
+            f"🕒 Executado em: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
+
+        cursor.close()
+        conn.close()
+
         return True
 
     except Exception as e:
-        logger.error(f"Erro ao inserir classificações padrão: {str(e)}")
-        db.session.rollback()
+        print(f"❌ Erro durante a migração: {str(e)}")
+        if 'conn' in locals():
+            conn.rollback()
+            conn.close()
         return False
-
-
-def update_existing_records():
-    """Atualizar registros existentes com classificações padrão"""
-    try:
-        # Verificar se existem registros sem classificação
-        result = db.session.execute(text("""
-            SELECT COUNT(*) FROM registros 
-            WHERE classificacao_grupo IS NULL OR classificacao_grupo = ''
-        """)).scalar()
-
-        if result == 0:
-            logger.info("Todos os registros já possuem classificação")
-            return True
-
-        logger.info(f"Atualizando {result} registros sem classificação...")
-
-        # Atualizar registros baseado no tipo de registro
-        db.session.execute(text("""
-            UPDATE registros 
-            SET classificacao_grupo = 'Documentação',
-                classificacao_subgrupo = 'Projeto'
-            WHERE (classificacao_grupo IS NULL OR classificacao_grupo = '')
-            AND tipo_registro_id IN (
-                SELECT id FROM tipos_registro 
-                WHERE nome ILIKE '%projeto%' OR nome ILIKE '%desenho%'
-            )
-        """))
-
-        db.session.execute(text("""
-            UPDATE registros 
-            SET classificacao_grupo = 'Qualidade',
-                classificacao_subgrupo = 'Inspeção'
-            WHERE (classificacao_grupo IS NULL OR classificacao_grupo = '')
-            AND tipo_registro_id IN (
-                SELECT id FROM tipos_registro 
-                WHERE nome ILIKE '%inspeção%' OR nome ILIKE '%vistoria%'
-            )
-        """))
-
-        # Para registros restantes, usar classificação genérica
-        db.session.execute(text("""
-            UPDATE registros 
-            SET classificacao_grupo = 'Documentação',
-                classificacao_subgrupo = 'Projeto'
-            WHERE classificacao_grupo IS NULL OR classificacao_grupo = ''
-        """))
-
-        # Atualizar anexos_count para 0 onde for NULL
-        db.session.execute(text("""
-            UPDATE registros 
-            SET anexos_count = 0 
-            WHERE anexos_count IS NULL
-        """))
-
-        db.session.commit()
-        logger.info("Registros existentes atualizados com sucesso")
-        return True
-
-    except Exception as e:
-        logger.error(f"Erro ao atualizar registros existentes: {str(e)}")
-        db.session.rollback()
-        return False
-
-
-def main():
-    """Função principal do script"""
-    logger.info("=== INICIANDO MIGRAÇÃO DE CLASSIFICAÇÕES ===")
-
-    app = create_app()
-
-    with app.app_context():
-        try:
-            # 1. Adicionar colunas de classificação
-            logger.info(
-                "1. Verificando/adicionando colunas de classificação...")
-            if not add_classification_columns():
-                logger.error("Falha ao adicionar colunas de classificação")
-                return False
-
-            # 2. Criar tabela de classificações
-            logger.info("2. Verificando/criando tabela de classificações...")
-            if not create_classifications_table():
-                logger.error("Falha ao criar tabela de classificações")
-                return False
-
-            # 3. Inserir classificações padrão
-            logger.info("3. Inserindo classificações padrão...")
-            if not insert_default_classifications():
-                logger.error("Falha ao inserir classificações padrão")
-                return False
-
-            # 4. Atualizar registros existentes
-            logger.info("4. Atualizando registros existentes...")
-            if not update_existing_records():
-                logger.error("Falha ao atualizar registros existentes")
-                return False
-
-            logger.info("=== MIGRAÇÃO CONCLUÍDA COM SUCESSO ===")
-            return True
-
-        except Exception as e:
-            logger.error(f"Erro geral na migração: {str(e)}")
-            return False
 
 
 if __name__ == "__main__":
-    success = main()
-    sys.exit(0 if success else 1)
+    print("🚀 Executando migração de classificação...")
+    success = run_classification_migration()
+
+    if success:
+        print("\n✅ Migração executada com sucesso!")
+        print("O sistema agora suporta classificação de registros.")
+    else:
+        print("\n❌ Falha na migração!")
+        print("Verifique os logs de erro acima.")
+        sys.exit(1)

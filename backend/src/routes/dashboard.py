@@ -2,7 +2,7 @@ from flask import Blueprint, request, jsonify
 from models.registro import Registro, db
 from models.obra import Obra
 from routes.auth import token_required, obra_access_required
-from sqlalchemy import func, desc, text
+from sqlalchemy import func, desc
 from datetime import datetime, timedelta
 
 dashboard_bp = Blueprint('dashboard', __name__)
@@ -38,7 +38,6 @@ def get_atividades_recentes(current_user):
         }), 200
 
     except Exception as e:
-        print(f"Erro em atividades recentes: {str(e)}")
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
@@ -70,27 +69,18 @@ def get_estatisticas(current_user):
         registros_por_tipo = registros_por_tipo.group_by(
             Registro.tipo_registro).all()
 
-        # Registros por classificação (com verificação se coluna existe)
-        registros_por_classificacao = []
-        try:
-            # Verificar se a coluna existe antes de fazer a query
-            db.session.execute(
-                text("SELECT classificacao_grupo FROM registros LIMIT 1"))
+        # NOVO: Registros por classificação (grupo)
+        registros_por_classificacao = db.session.query(
+            Registro.classificacao_grupo,
+            func.count(Registro.id).label('count')
+        ).filter(Registro.classificacao_grupo.isnot(None))
 
-            classificacao_query = db.session.query(
-                Registro.classificacao_grupo,
-                func.count(Registro.id).label('count')
-            ).filter(Registro.classificacao_grupo.isnot(None))
+        if current_user.role == 'usuario_padrao':
+            registros_por_classificacao = registros_por_classificacao.filter_by(
+                obra_id=current_user.obra_id)
 
-            if current_user.role == 'usuario_padrao':
-                classificacao_query = classificacao_query.filter_by(
-                    obra_id=current_user.obra_id)
-
-            registros_por_classificacao = classificacao_query.group_by(
-                Registro.classificacao_grupo).all()
-        except Exception as e:
-            print(f"Coluna classificacao_grupo não existe ainda: {str(e)}")
-            registros_por_classificacao = []
+        registros_por_classificacao = registros_por_classificacao.group_by(
+            Registro.classificacao_grupo).all()
 
         # Registros dos últimos 30 dias
         data_limite_30d = datetime.utcnow() - timedelta(days=30)
@@ -106,7 +96,7 @@ def get_estatisticas(current_user):
                 func.count(Registro.id).label('count')
             ).outerjoin(Registro).group_by(Obra.id, Obra.nome).all()
 
-        # Registros com anexo vs sem anexo
+        # NOVO: Registros com anexo vs sem anexo
         registros_com_anexo = base_query.filter(
             (Registro.blob_url.isnot(None)) | (
                 Registro.caminho_anexo.isnot(None))
@@ -135,7 +125,6 @@ def get_estatisticas(current_user):
         }), 200
 
     except Exception as e:
-        print(f"Erro em estatísticas: {str(e)}")
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
@@ -183,7 +172,6 @@ def get_resumo_obra(current_user, obra_id):
         }), 200
 
     except Exception as e:
-        print(f"Erro em resumo obra: {str(e)}")
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
@@ -232,5 +220,4 @@ def get_timeline(current_user):
         }), 200
 
     except Exception as e:
-        print(f"Erro em timeline: {str(e)}")
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
