@@ -19,7 +19,7 @@ from models.password_reset import PasswordResetToken
 from models.audit_log import AuditLog
 from config import config
 from flask_cors import CORS
-from flask import Flask, send_from_directory, request, jsonify
+from flask import Flask, send_from_directory, request
 from sqlalchemy import text
 import os
 import sys
@@ -103,23 +103,6 @@ def create_app(config_name=None):
     app.register_blueprint(importacao_bp, url_prefix='/api/importacao')
     app.register_blueprint(workflow_bp, url_prefix='/api/workflow')
 
-    # ✅ NOVO: Rota de Relatórios
-    @app.route('/api/relatorios', methods=['GET'])
-    def relatorios():
-        """Endpoint para relatórios - Em desenvolvimento"""
-        return jsonify({
-            'message': 'Módulo de Relatórios em Desenvolvimento',
-            'status': 'coming_soon',
-            'features_planejadas': [
-                'Relatórios por período',
-                'Relatórios por obra',
-                'Relatórios por classificação',
-                'Gráficos avançados',
-                'Exportação PDF',
-                'Agendamento de relatórios'
-            ]
-        }), 200
-
     # Middleware CORS manual para casos especiais
     @app.before_request
     def handle_preflight():
@@ -195,7 +178,7 @@ def migrate_blob_columns():
             SELECT column_name 
             FROM information_schema.columns 
             WHERE table_name = 'registros' 
-            AND column_name IN ('blob_url', 'blob_pathname', 'classificacao_grupo', 'classificacao_subgrupo')
+            AND column_name IN ('blob_url', 'blob_pathname')
         """))
 
         existing_columns = [row[0] for row in result.fetchall()]
@@ -218,30 +201,13 @@ def migrate_blob_columns():
             """))
             logger.info("✅ Coluna blob_pathname adicionada")
 
-        # ✅ NOVO: Adicionar colunas de classificação
-        if 'classificacao_grupo' not in existing_columns:
-            logger.info("➕ Adicionando coluna classificacao_grupo...")
-            db.session.execute(text("""
-                ALTER TABLE registros 
-                ADD COLUMN classificacao_grupo VARCHAR(100)
-            """))
-            logger.info("✅ Coluna classificacao_grupo adicionada")
-
-        if 'classificacao_subgrupo' not in existing_columns:
-            logger.info("➕ Adicionando coluna classificacao_subgrupo...")
-            db.session.execute(text("""
-                ALTER TABLE registros 
-                ADD COLUMN classificacao_subgrupo VARCHAR(100)
-            """))
-            logger.info("✅ Coluna classificacao_subgrupo adicionada")
-
         # Commit das alterações
         db.session.commit()
-        logger.info("🎉 Migração das colunas concluída!")
+        logger.info("🎉 Migração das colunas Blob concluída!")
         return True
 
     except Exception as e:
-        logger.error(f"❌ Erro na migração: {str(e)}")
+        logger.error(f"❌ Erro na migração Blob: {str(e)}")
         db.session.rollback()
         return False
 
@@ -329,7 +295,7 @@ with app.app_context():
     db.create_all()
     logger.info("🗄️ Tabelas do banco de dados criadas/verificadas")
 
-    # NOVO: Executar migração das colunas Blob + Classificação
+    # NOVO: Executar migração das colunas Blob
     migrate_blob_columns()
 
     if create_default_data():
@@ -375,10 +341,7 @@ def health_check():
             'Configurações',
             'Importação em Lote',
             'Reset de Senha',
-            'Vercel Blob Storage',
-            'Sistema de Classificação Hierárquico',  # ✅ NOVO
-            'Exportação Excel',  # ✅ NOVO
-            'Relatórios (Em Desenvolvimento)'  # ✅ NOVO
+            'Vercel Blob Storage'
         ]
     }, 200
 

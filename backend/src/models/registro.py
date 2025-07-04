@@ -15,10 +15,6 @@ class Registro(db.Model):
     codigo_numero = db.Column(db.String(50), nullable=True)
     descricao = db.Column(db.Text, nullable=False)
 
-    # ✅ NOVO: Campos de Classificação Hierárquica
-    classificacao_grupo = db.Column(db.String(100), nullable=True)
-    classificacao_subgrupo = db.Column(db.String(100), nullable=True)
-
     # ATUALIZADO: Campos para Vercel Blob
     # Mantido para compatibilidade
     caminho_anexo = db.Column(db.String(500), nullable=True)
@@ -46,8 +42,7 @@ class Registro(db.Model):
     def __init__(self, titulo, tipo_registro, descricao, autor_id, obra_id,
                  data_registro=None, codigo_numero=None, caminho_anexo=None,
                  nome_arquivo_original=None, formato_arquivo=None, tamanho_arquivo=None,
-                 tipo_registro_id=None, blob_url=None, blob_pathname=None,
-                 classificacao_grupo=None, classificacao_subgrupo=None):
+                 tipo_registro_id=None, blob_url=None, blob_pathname=None):
         self.titulo = titulo
         self.tipo_registro = tipo_registro
         self.descricao = descricao
@@ -62,9 +57,6 @@ class Registro(db.Model):
         self.formato_arquivo = formato_arquivo
         self.tamanho_arquivo = tamanho_arquivo
         self.tipo_registro_id = tipo_registro_id
-        # ✅ NOVO: Classificação
-        self.classificacao_grupo = classificacao_grupo
-        self.classificacao_subgrupo = classificacao_subgrupo
 
     def to_dict(self):
         return {
@@ -78,10 +70,6 @@ class Registro(db.Model):
             'autor_nome': self.autor.username if self.autor else None,
             'obra_nome': self.obra.nome if self.obra else None,
             'obra_codigo': self.obra.codigo if self.obra else None,
-            # ✅ NOVO: Classificação no retorno
-            'classificacao_grupo': self.classificacao_grupo,
-            'classificacao_subgrupo': self.classificacao_subgrupo,
-            'classificacao_completa': f"{self.classificacao_grupo} > {self.classificacao_subgrupo}" if self.classificacao_grupo and self.classificacao_subgrupo else None,
             # CORREÇÃO CRÍTICA: SEMPRE usar URL do backend, nunca Blob diretamente
             'anexo_url': f"/api/registros/{self.id}/download" if (self.blob_url or self.caminho_anexo) else None,
             'nome_arquivo_original': self.nome_arquivo_original,

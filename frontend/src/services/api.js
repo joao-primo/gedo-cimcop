@@ -63,19 +63,10 @@ export const dashboardAPI = {
   getTimeline: (dias = 30) => api.get(`/dashboard/timeline?dias=${dias}`),
 }
 
-// ✅ APIs de Pesquisa - ATUALIZADAS
+// APIs de Pesquisa
 export const pesquisaAPI = {
   getFiltros: () => api.get("/pesquisa/filtros"),
   pesquisar: (params) => api.get("/pesquisa/", { params }),
-  // ✅ NOVO: Exportar para Excel
-  exportarExcel: (params) =>
-    api.get("/pesquisa/exportar-excel", {
-      params,
-      responseType: "blob",
-      timeout: 60000, // 60 segundos para exportações grandes
-    }),
-  // ✅ NOVO: Visualizar registro completo
-  visualizar: (id) => api.get(`/pesquisa/visualizar/${id}`),
 }
 
 // APIs de Registros
@@ -163,32 +154,9 @@ export const registrosAPI = {
       }
     }
   },
-}
-
-// ✅ APIs de Importação - NOVA SEÇÃO
-export const importacaoAPI = {
-  // Baixar template Excel
-  downloadTemplate: () =>
-    api.get("/importacao/template", {
-      responseType: "blob",
-      timeout: 30000,
-    }),
-  // Processar planilha para revisão
-  processarPlanilha: (formData) =>
-    api.post("/importacao/processar", formData, {
+  importarLote: (formData) =>
+    api.post("/importacao/lote", formData, {
       headers: { "Content-Type": "multipart/form-data" },
-      timeout: 60000, // 60 segundos para processamento
-    }),
-  // Upload temporário de anexo
-  uploadAnexoTemp: (formData) =>
-    api.post("/importacao/upload-anexo", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 60000,
-    }),
-  // Finalizar importação
-  finalizarImportacao: (data) =>
-    api.post("/importacao/finalizar", data, {
-      timeout: 120000, // 2 minutos para finalização
     }),
 }
 
@@ -234,17 +202,6 @@ export const workflowAPI = {
   criar: (data) => api.post("/workflow/", data),
   atualizar: (id, data) => api.put(`/workflow/${id}`, data),
   deletar: (id) => api.delete(`/workflow/${id}`),
-}
-
-// ✅ APIs de Relatórios - PREPARADO PARA FUTURO
-export const relatoriosAPI = {
-  // Placeholder para futuras implementações
-  gerarRelatorio: (tipo, params) => api.post(`/relatorios/${tipo}`, params),
-  listarRelatorios: () => api.get("/relatorios/"),
-  downloadRelatorio: (id) =>
-    api.get(`/relatorios/${id}/download`, {
-      responseType: "blob",
-    }),
 }
 
 // Export da instância principal para casos especiais

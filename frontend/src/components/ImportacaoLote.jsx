@@ -2,7 +2,7 @@
 
 import { useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { importacaoAPI } from "../services/api"
+import axios from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +11,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Upload, Download, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, FileText, X, Tag } from "lucide-react"
+import { Upload, Download, FileSpreadsheet, CheckCircle, AlertTriangle, Loader2, FileText, X } from "lucide-react"
 
 const ImportacaoLote = ({ onClose, onSuccess }) => {
   const { user } = useAuth()
@@ -27,7 +27,9 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
   const downloadTemplate = async () => {
     try {
       setLoading(true)
-      const response = await importacaoAPI.downloadTemplate()
+      const response = await axios.get("/importacao/template", {
+        responseType: "blob",
+      })
 
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement("a")
@@ -65,7 +67,9 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
       const formData = new FormData()
       formData.append("arquivo", arquivo)
 
-      const response = await importacaoAPI.processarPlanilha(formData)
+      const response = await axios.post("/importacao/processar", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
 
       setRegistrosProcessados(response.data.registros)
       setErros(response.data.erros)
@@ -93,7 +97,9 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
       const formData = new FormData()
       formData.append("arquivo", file)
 
-      const response = await importacaoAPI.uploadAnexoTemp(formData)
+      const response = await axios.post("/importacao/upload-anexo", formData, {
+        headers: { "Content-Type": "multipart/form-data" },
+      })
 
       // Atualizar registro com dados do anexo
       setRegistrosProcessados((prev) =>
@@ -133,7 +139,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
       setLoading(true)
       setEtapa(4)
 
-      const response = await importacaoAPI.finalizarImportacao({
+      const response = await axios.post("/importacao/finalizar", {
         registros: registrosProcessados,
       })
 
@@ -194,15 +200,6 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                   <strong>Obra:</strong> {registro.obra_nome}
                 </div>
               </div>
-              {/* ✅ NOVO: Exibir classificação */}
-              {registro.classificacao_grupo && (
-                <div className="mt-2 flex items-center gap-2">
-                  <Tag className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm font-medium text-blue-700">
-                    {registro.classificacao_grupo} → {registro.classificacao_subgrupo}
-                  </span>
-                </div>
-              )}
               <div className="mt-2">
                 <strong>Descrição:</strong>
                 <p className="text-sm text-gray-600 mt-1">{registro.descricao}</p>
@@ -250,7 +247,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
         <div className="flex justify-between items-center p-6 border-b">
           <div>
             <h2 className="text-2xl font-bold">Importação em Lote</h2>
-            <p className="text-gray-600">Importe múltiplos registros via planilha com classificações</p>
+            <p className="text-gray-600">Importe múltiplos registros via planilha</p>
           </div>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <X className="h-4 w-4" />
@@ -285,11 +282,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                     <Download className="mr-2 h-5 w-5" />
                     1. Baixar Template
                   </CardTitle>
-                  <CardDescription>
-                    Baixe o template Excel com o formato correto para importação
-                    <br />
-                    <strong className="text-blue-600">✅ Agora inclui sistema de classificação hierárquico!</strong>
-                  </CardDescription>
+                  <CardDescription>Baixe o template Excel com o formato correto para importação</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Button onClick={downloadTemplate} disabled={loading} variant="outline">
@@ -305,27 +298,6 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                       </>
                     )}
                   </Button>
-
-                  {/* ✅ NOVA SEÇÃO: Informações sobre classificações */}
-                  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
-                    <h4 className="font-semibold text-blue-800 mb-2 flex items-center">
-                      <Tag className="w-4 h-4 mr-2" />
-                      Sistema de Classificação
-                    </h4>
-                    <p className="text-sm text-blue-700 mb-2">
-                      O template agora inclui campos obrigatórios de classificação:
-                    </p>
-                    <ul className="text-xs text-blue-600 space-y-1">
-                      <li>
-                        • <strong>classificacao_grupo:</strong> Grupo principal (ex: Contratos, Projetos, etc.)
-                      </li>
-                      <li>
-                        • <strong>classificacao_subgrupo:</strong> Subgrupo específico (ex: Contrato Principal, ART/RRT,
-                        etc.)
-                      </li>
-                      <li>• Consulte a aba "Classificações" no template para ver todas as opções válidas</li>
-                    </ul>
-                  </div>
                 </CardContent>
               </Card>
 
@@ -336,7 +308,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                     2. Enviar Planilha Preenchida
                   </CardTitle>
                   <CardDescription>
-                    Selecione a planilha Excel (.xlsx, .xls) ou CSV preenchida com os dados e classificações
+                    Selecione a planilha Excel (.xlsx, .xls) ou CSV preenchida com os dados
                   </CardDescription>
                 </CardHeader>
                 <CardContent className="space-y-4">
@@ -404,15 +376,6 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                                   <h4 className="font-semibold">{registro.titulo}</h4>
                                   <p className="text-sm text-gray-600">Tipo: {registro.tipo_registro}</p>
                                   <p className="text-sm text-gray-600">Data: {registro.data_registro}</p>
-                                  {/* ✅ NOVO: Mostrar classificação na revisão */}
-                                  {registro.classificacao_grupo && (
-                                    <div className="flex items-center gap-1 mt-1">
-                                      <Tag className="w-3 h-3 text-blue-600" />
-                                      <span className="text-xs text-blue-700">
-                                        {registro.classificacao_grupo} → {registro.classificacao_subgrupo}
-                                      </span>
-                                    </div>
-                                  )}
                                 </div>
                                 <div>
                                   <p className="text-sm text-gray-600">Código: {registro.codigo_numero}</p>

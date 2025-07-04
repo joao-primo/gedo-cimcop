@@ -9,10 +9,6 @@ from datetime import datetime
 import os
 import requests
 import mimetypes
-import io
-import csv
-from openpyxl import Workbook
-from openpyxl.styles import Font, PatternFill, Alignment
 
 pesquisa_bp = Blueprint('pesquisa', __name__)
 
@@ -33,9 +29,6 @@ def pesquisa_avancada(current_user):
         data_fim = request.args.get('data_fim')
         data_registro_inicio = request.args.get('data_registro_inicio')
         data_registro_fim = request.args.get('data_registro_fim')
-        # ✅ NOVO: Filtro por classificação
-        classificacao_grupo = request.args.get(
-            'classificacao_grupo', '').strip()
 
         # Parâmetros de paginação
         page = request.args.get('page', 1, type=int)
@@ -65,10 +58,6 @@ def pesquisa_avancada(current_user):
 
         if tipo_registro_id:
             query = query.filter_by(tipo_registro_id=tipo_registro_id)
-
-        # ✅ NOVO: Filtro por classificação
-        if classificacao_grupo:
-            query = query.filter_by(classificacao_grupo=classificacao_grupo)
 
         # Filtro por código/número
         if codigo_numero:
@@ -164,7 +153,6 @@ def pesquisa_avancada(current_user):
                 'data_fim': data_fim,
                 'data_registro_inicio': data_registro_inicio,
                 'data_registro_fim': data_registro_fim,
-                'classificacao_grupo': classificacao_grupo,
                 'ordenacao': ordenacao
             }
         }), 200
@@ -198,16 +186,6 @@ def get_filtros_disponiveis(current_user):
         tipos_registro_existentes = [tipo[0]
                                      for tipo in query.all() if tipo[0]]
 
-        # ✅ NOVO: Classificações disponíveis
-        classificacoes_query = db.session.query(
-            Registro.classificacao_grupo).distinct()
-        if current_user.role == 'usuario_padrao':
-            classificacoes_query = classificacoes_query.filter_by(
-                obra_id=current_user.obra_id)
-
-        classificacoes_existentes = [cls[0]
-                                     for cls in classificacoes_query.all() if cls[0]]
-
         # Autores (usuários que criaram registros)
         from models.user import User
         autores_query = db.session.query(User.id, User.username, User.email)\
@@ -236,8 +214,6 @@ def get_filtros_disponiveis(current_user):
             'obras': [obra.to_dict() for obra in obras],
             'tipos_registro': [tipo.to_dict() for tipo in tipos_registro],
             'tipos_registro_existentes': tipos_registro_existentes,
-            # ✅ NOVO: Classificações nos filtros
-            'classificacoes_existentes': classificacoes_existentes,
             'autores': [
                 {'id': autor_id, 'username': username, 'email': email}
                 for autor_id, username, email in autores
@@ -266,7 +242,6 @@ def get_filtros_disponiveis(current_user):
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
-# ✅ NOVO: Exportação Excel
 @pesquisa_bp.route('/exportar', methods=['POST'])
 @token_required
 @obra_access_required
@@ -275,132 +250,19 @@ def exportar_resultados(current_user):
         # Receber os mesmos filtros da pesquisa
         data = request.get_json()
 
-        print(
-            f"📊 EXPORTAÇÃO: Iniciando exportação para usuário {current_user.username}")
-        print(f"   - Filtros recebidos: {data}")
+        # Aplicar os mesmos filtros da pesquisa avançada
+        # (código similar ao endpoint de pesquisa, mas sem paginação)
 
-        # Aplicar os mesmos filtros da pesquisa avançada (sem paginação)
-        palavra_chave = data.get('palavra_chave', '').strip()
-        obra_id = data.get('obra_id')
-        tipo_registro_id = data.get('tipo_registro_id')
-        classificacao_grupo = data.get('classificacao_grupo', '').strip()
-        data_registro_inicio = data.get('data_registro_inicio')
+        # Por enquanto, retornar apenas uma mensagem de sucesso
+        # A implementação completa incluiria geração de CSV/Excel
 
-        # Query base
-        query = Registro.query
-
-        # Aplicar filtros de acesso baseado no usuário
-        if current_user.role == 'usuario_padrao':
-            query = query.filter_by(obra_id=current_user.obra_id)
-        elif obra_id and obra_id != '0':
-            query = query.filter_by(obra_id=int(obra_id))
-
-        # Aplicar filtros
-        if palavra_chave:
-            query = query.filter(
-                or_(
-                    Registro.titulo.ilike(f'%{palavra_chave}%'),
-                    Registro.descricao.ilike(f'%{palavra_chave}%')
-                )
-            )
-
-        if tipo_registro_id and tipo_registro_id != '0':
-            query = query.filter_by(tipo_registro_id=int(tipo_registro_id))
-
-        if classificacao_grupo:
-            query = query.filter_by(classificacao_grupo=classificacao_grupo)
-
-        if data_registro_inicio:
-            try:
-                data_dt = datetime.strptime(data_registro_inicio, '%Y-%m-%d')
-                query = query.filter(Registro.data_registro >= data_dt)
-            except ValueError:
-                pass
-
-        # Buscar todos os registros (sem paginação)
-        registros = query.order_by(Registro.created_at.desc()).all()
-
-        print(f"📊 EXPORTAÇÃO: {len(registros)} registros encontrados")
-
-        if not registros:
-            return jsonify({'message': 'Nenhum registro encontrado para exportar'}), 404
-
-        # Criar workbook Excel
-        wb = Workbook()
-        ws = wb.active
-        ws.title = "Registros GEDO CIMCOP"
-
-        # Definir cabeçalhos
-        headers = [
-            'Data do Registro',
-            'Obra',
-            'Tipo de Registro',
-            'Classificação',
-            'Título',
-            'Autor',
-            'Descrição'
-        ]
-
-        # Estilizar cabeçalhos
-        header_font = Font(bold=True, color="FFFFFF")
-        header_fill = PatternFill(
-            start_color="366092", end_color="366092", fill_type="solid")
-        header_alignment = Alignment(horizontal="center", vertical="center")
-
-        # Adicionar cabeçalhos
-        for col, header in enumerate(headers, 1):
-            cell = ws.cell(row=1, column=col, value=header)
-            cell.font = header_font
-            cell.fill = header_fill
-            cell.alignment = header_alignment
-
-        # Adicionar dados
-        for row, registro in enumerate(registros, 2):
-            ws.cell(row=row, column=1, value=registro.data_registro.strftime(
-                '%d/%m/%Y') if registro.data_registro else '')
-            ws.cell(row=row, column=2,
-                    value=registro.obra.nome if registro.obra else '')
-            ws.cell(row=row, column=3, value=registro.tipo_registro or '')
-            ws.cell(row=row, column=4,
-                    value=f"{registro.classificacao_grupo} > {registro.classificacao_subgrupo}" if registro.classificacao_grupo and registro.classificacao_subgrupo else '')
-            ws.cell(row=row, column=5, value=registro.titulo or '')
-            ws.cell(row=row, column=6,
-                    value=registro.autor.username if registro.autor else '')
-            ws.cell(row=row, column=7, value=registro.descricao or '')
-
-        # Ajustar largura das colunas
-        column_widths = [15, 25, 20, 30, 30, 15, 50]
-        for col, width in enumerate(column_widths, 1):
-            ws.column_dimensions[ws.cell(
-                row=1, column=col).column_letter].width = width
-
-        # Salvar em memória
-        output = io.BytesIO()
-        wb.save(output)
-        output.seek(0)
-
-        # Nome do arquivo com timestamp
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'registros_gedo_cimcop_{timestamp}.xlsx'
-
-        print(f"✅ EXPORTAÇÃO: Arquivo Excel criado: {filename}")
-
-        return Response(
-            output.getvalue(),
-            headers={
-                'Content-Type': 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                'Content-Disposition': f'attachment; filename="{filename}"',
-                'Cache-Control': 'no-cache, no-store, must-revalidate',
-                'Pragma': 'no-cache',
-                'Expires': '0'
-            }
-        )
+        return jsonify({
+            'message': 'Funcionalidade de exportação será implementada em versão futura',
+            'filtros_recebidos': data
+        }), 200
 
     except Exception as e:
-        print(f"❌ EXPORTAÇÃO: Erro: {str(e)}")
-        import traceback
-        traceback.print_exc()
-        return jsonify({'message': f'Erro interno na exportação: {str(e)}'}), 500
+        return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
 @pesquisa_bp.route('/<int:registro_id>/download', methods=['GET'])
@@ -425,7 +287,7 @@ def download_anexo(current_user, registro_id):
         if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
             print(
                 f"❌ DOWNLOAD: Acesso negado - usuário obra {current_user.obra_id} != registro obra {registro.obra_id}")
-            return jsonify({'message': 'negado a este registro'}), 403
+            return jsonify({'message': 'Acesso negado a este registro'}), 403
 
         print(f"✅ DOWNLOAD: Permissões OK")
         print(f"   - Tem blob_url: {bool(registro.blob_url)}")
@@ -658,31 +520,3 @@ def debug_registro(current_user, registro_id):
             'message': f'Erro interno: {str(e)}',
             'exists': False
         }), 500
-
-
-# ✅ NOVO: Visualização completa de registro
-@pesquisa_bp.route('/<int:registro_id>/visualizar', methods=['GET'])
-@token_required
-@obra_access_required
-def visualizar_registro(current_user, registro_id):
-    """Visualização completa de um registro"""
-    try:
-        print(f"👁️ VISUALIZAÇÃO: Buscando registro ID {registro_id}")
-
-        registro = Registro.query.get(registro_id)
-        if not registro:
-            return jsonify({'message': 'Registro não encontrado'}), 404
-
-        # Verificar permissões
-        if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
-            return jsonify({'message': 'Acesso negado a este registro'}), 403
-
-        print(f"✅ VISUALIZAÇÃO: Registro encontrado: {registro.titulo}")
-
-        return jsonify({
-            'registro': registro.to_dict()
-        }), 200
-
-    except Exception as e:
-        print(f"❌ VISUALIZAÇÃO: Erro: {str(e)}")
-        return jsonify({'message': f'Erro interno: {str(e)}'}), 500

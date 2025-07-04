@@ -100,13 +100,6 @@ def validate_registro_data(data, files):
         if not value or str(value).strip() == '':
             errors.append(f'Campo {field} é obrigatório')
 
-    # ✅ NOVO: Validar classificação (obrigatória)
-    if not data.get('classificacao_grupo') or str(data.get('classificacao_grupo')).strip() == '':
-        errors.append('Campo classificacao_grupo é obrigatório')
-
-    if not data.get('classificacao_subgrupo') or str(data.get('classificacao_subgrupo')).strip() == '':
-        errors.append('Campo classificacao_subgrupo é obrigatório')
-
     # ← CORREÇÃO: Validar se obra_id existe para admin
     if 'obra_id' in data:
         obra_id = data.get('obra_id')
@@ -485,11 +478,6 @@ def create_registro(current_user):
         data_registro = request.form.get('data_registro', '').strip()
         obra_id = request.form.get('obra_id')
         tipo_registro_id = request.form.get('tipo_registro_id')
-        # ✅ NOVO: Extrair classificação
-        classificacao_grupo = request.form.get(
-            'classificacao_grupo', '').strip()
-        classificacao_subgrupo = request.form.get(
-            'classificacao_subgrupo', '').strip()
 
         print(f"📋 CREATE REGISTRO: Campos extraídos")
         print(f"   - titulo: '{titulo}'")
@@ -497,8 +485,6 @@ def create_registro(current_user):
         print(f"   - descricao: '{descricao[:50]}...'")
         print(f"   - obra_id: '{obra_id}'")
         print(f"   - tipo_registro_id: '{tipo_registro_id}'")
-        print(f"   - classificacao_grupo: '{classificacao_grupo}'")
-        print(f"   - classificacao_subgrupo: '{classificacao_subgrupo}'")
 
         # ← CORREÇÃO: Conversão segura de IDs
         try:
@@ -581,9 +567,6 @@ def create_registro(current_user):
                 data_registro=data_registro_dt,
                 codigo_numero=codigo_numero if codigo_numero else None,
                 tipo_registro_id=tipo_registro_id if tipo_registro_id else None,
-                # ✅ NOVO: Incluir classificação
-                classificacao_grupo=classificacao_grupo if classificacao_grupo else None,
-                classificacao_subgrupo=classificacao_subgrupo if classificacao_subgrupo else None,
                 **file_info
             )
 
@@ -595,8 +578,6 @@ def create_registro(current_user):
             print(f"   - Tem blob_url: {bool(registro.blob_url)}")
             print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
             print(f"   - Formato: {registro.formato_arquivo}")
-            print(
-                f"   - Classificação: {registro.classificacao_grupo} > {registro.classificacao_subgrupo}")
 
         except Exception as e:
             print(f"❌ CREATE REGISTRO: Erro ao salvar no banco: {str(e)}")
@@ -655,12 +636,6 @@ def update_registro(current_user, registro_id):
         if 'tipo_registro_id' in request.form:
             registro.tipo_registro_id = request.form.get(
                 'tipo_registro_id', type=int)
-
-        # ✅ NOVO: Atualizar classificação
-        if 'classificacao_grupo' in request.form:
-            registro.classificacao_grupo = request.form['classificacao_grupo']
-        if 'classificacao_subgrupo' in request.form:
-            registro.classificacao_subgrupo = request.form['classificacao_subgrupo']
 
         # Processar novo arquivo
         if 'anexo' in request.files:

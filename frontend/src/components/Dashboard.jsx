@@ -18,9 +18,9 @@ import {
   Calendar,
   BarChart3,
   Activity,
+  Target,
   AlertTriangle,
   Filter,
-  FolderTree,
 } from "lucide-react"
 import {
   Chart as ChartJS,
@@ -132,18 +132,6 @@ const Dashboard = () => {
         estatisticasFiltradas.registros_por_tipo = []
       }
 
-      // ✅ NOVO: Garantir que registros_por_classificacao seja sempre um array
-      if (
-        estatisticasFiltradas.registros_por_classificacao &&
-        Array.isArray(estatisticasFiltradas.registros_por_classificacao)
-      ) {
-        estatisticasFiltradas.registros_por_classificacao = estatisticasFiltradas.registros_por_classificacao
-          .sort((a, b) => b.count - a.count)
-          .slice(0, 8) // Top 8 classificações
-      } else {
-        estatisticasFiltradas.registros_por_classificacao = []
-      }
-
       // Garantir que registros_por_obra seja sempre um array
       if (!Array.isArray(estatisticasFiltradas.registros_por_obra)) {
         estatisticasFiltradas.registros_por_obra = []
@@ -231,11 +219,6 @@ const Dashboard = () => {
     ? dados.estatisticas.registros_por_obra
     : []
 
-  // ✅ NOVO: Dados de classificação
-  const registrosPorClassificacao = Array.isArray(dados.estatisticas.registros_por_classificacao)
-    ? dados.estatisticas.registros_por_classificacao
-    : []
-
   const graficoTiposConfig = {
     data: {
       labels: registrosPorTipo.map((item) => item.tipo || "Sem tipo"),
@@ -281,56 +264,6 @@ const Dashboard = () => {
           },
         },
       },
-    },
-  }
-
-  // ✅ NOVO: Configuração do gráfico de classificações
-  const graficoClassificacaoConfig = {
-    data: {
-      labels: registrosPorClassificacao.map((item) => item.grupo || "Sem classificação"),
-      datasets: [
-        {
-          label: "Registros por Classificação",
-          data: registrosPorClassificacao.map((item) => item.count || 0),
-          backgroundColor: "#10b981", // Verde para diferenciar dos tipos
-          borderRadius: 4,
-          borderSkipped: false,
-          barThickness: 40,
-          maxBarThickness: 50,
-        },
-      ],
-    },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: false,
-        },
-        tooltip: {
-          callbacks: {
-            label: (context) => `${context.parsed.y} registros`,
-          },
-        },
-      },
-      scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            stepSize: 1,
-          },
-        },
-        x: {
-          ticks: {
-            maxRotation: 45,
-            font: {
-              size: 11,
-            },
-          },
-        },
-      },
-      categoryPercentage: 0.7,
-      barPercentage: 0.8,
     },
   }
 
@@ -591,17 +524,16 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* ✅ MODIFICADO: Card de Classificações em vez de "Tipos Ativos" */}
-        <Card className="border-l-4 border-l-emerald-500">
+        <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Classificações</CardTitle>
-            <div className="p-2 bg-emerald-100 rounded-full">
-              <FolderTree className="h-4 w-4 text-emerald-600" />
+            <CardTitle className="text-sm font-medium text-gray-600">Tipos Ativos</CardTitle>
+            <div className="p-2 bg-purple-100 rounded-full">
+              <Target className="h-4 w-4 text-purple-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-900">{registrosPorClassificacao.length || 0}</div>
-            <p className="text-xs text-gray-500 mt-1">Grupos ativos</p>
+            <div className="text-3xl font-bold text-gray-900">{registrosPorTipo.length || 0}</div>
+            <p className="text-xs text-gray-500 mt-1">Top 10 tipos</p>
           </CardContent>
         </Card>
 
@@ -628,162 +560,147 @@ const Dashboard = () => {
         {/* Gráfico de Timeline */}
         <Card>
           <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <Calendar className="h-5 w-5 text-blue-600" />
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
               Atividade dos Últimos 30 Dias
             </CardTitle>
-            <CardDescription>Registros criados por dia</CardDescription>
+            <CardDescription>
+              Registros criados por dia
+              {obraSelecionada !== "todas" && (
+                <span className="ml-2 text-blue-600">• Filtrado por obra selecionada</span>
+              )}
+            </CardDescription>
           </CardHeader>
           <CardContent>
-            <div className="h-64">
-              {timelineData.length > 0 ? (
+            {timelineData.length > 0 ? (
+              <div className="h-80">
                 <Line {...graficoTimelineConfig} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <div className="text-center">
-                    <Calendar className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                    <p>Nenhum dado de timeline disponível</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* ✅ NOVO: Gráfico de Classificações */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <FolderTree className="h-5 w-5 text-emerald-600" />
-              Registros por Classificação
-            </CardTitle>
-            <CardDescription>Distribuição por grupos de classificação</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              {registrosPorClassificacao.length > 0 ? (
-                <Bar {...graficoClassificacaoConfig} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <div className="text-center">
-                    <FolderTree className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                    <p>Nenhuma classificação disponível</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Gráfico de Tipos de Registro */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="h-5 w-5 text-blue-600" />
-              Distribuição por Tipo
-            </CardTitle>
-            <CardDescription>Top 10 tipos de registro mais utilizados</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              {registrosPorTipo.length > 0 ? (
-                <Bar {...graficoTiposConfig} />
-              ) : (
-                <div className="flex items-center justify-center h-full text-gray-500">
-                  <div className="text-center">
-                    <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                    <p>Nenhum tipo de registro disponível</p>
-                  </div>
-                </div>
-              )}
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Gráfico de Registros por Obra (apenas para admin) */}
-        {isAdmin() && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2">
-                <Building2 className="h-5 w-5 text-blue-600" />
-                Registros por Obra
-              </CardTitle>
-              <CardDescription>Distribuição de registros entre as obras</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-64">
-                {registrosPorObra.length > 0 ? (
-                  <Bar {...graficoObrasConfig} />
-                ) : (
-                  <div className="flex items-center justify-center h-full text-gray-500">
-                    <div className="text-center">
-                      <Building2 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                      <p>Nenhuma obra com registros</p>
-                    </div>
-                  </div>
-                )}
               </div>
-            </CardContent>
-          </Card>
-        )}
+            ) : (
+              <div className="h-80 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>Nenhum dado disponível</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Gráfico de Tipos - Top 10 com gradiente baseado em valores */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+              Top 10 Tipos de Registro
+            </CardTitle>
+            <CardDescription>Os 10 tipos com mais registros</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {registrosPorTipo.length > 0 ? (
+              <div className="h-96">
+                <Bar {...graficoTiposConfig} />
+              </div>
+            ) : (
+              <div className="h-96 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>Nenhum dado disponível</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </div>
 
-      {/* Atividades Recentes */}
+      {/* Gráfico de Obras - Agora com barras menores */}
+      {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <Building2 className="h-5 w-5 mr-2 text-blue-600" />
+              Registros por Obra
+            </CardTitle>
+            <CardDescription>Distribuição de registros entre as obras</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-64">
+              <Bar {...graficoObrasConfig} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Atividades Recentes - Agora 5 em vez de 8 */}
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Clock className="h-5 w-5 text-blue-600" />
+          <CardTitle className="flex items-center">
+            <Clock className="h-5 w-5 mr-2 text-blue-600" />
             Atividades Recentes
           </CardTitle>
-          <CardDescription>Últimos 5 registros criados</CardDescription>
+          <CardDescription>
+            Últimas 5 atividades criadas no sistema
+            {obraSelecionada !== "todas" && <span className="ml-2 text-blue-600">• Filtrado por obra selecionada</span>}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          {dados.atividades.length > 0 ? (
+          {!Array.isArray(dados.atividades) || dados.atividades.length === 0 ? (
+            <div className="text-center py-12 text-gray-500">
+              <FileText className="h-16 w-16 mx-auto mb-4 text-gray-300" />
+              <h3 className="text-lg font-medium mb-2">Nenhuma atividade recente</h3>
+              <p className="text-sm">Quando novos registros forem criados, eles aparecerão aqui</p>
+            </div>
+          ) : (
             <div className="space-y-4">
-              {dados.atividades.map((atividade) => (
-                <div key={atividade.id} className="flex items-start space-x-4 p-4 bg-gray-50 rounded-lg">
-                  <div className="p-2 bg-blue-100 rounded-full">
-                    <FileText className="h-4 w-4 text-blue-600" />
+              {dados.atividades.map((atividade, index) => (
+                <div
+                  key={atividade.id || index}
+                  className="flex items-start space-x-4 p-4 border border-gray-200 rounded-lg hover:bg-gray-50 transition-all duration-200 hover:shadow-md"
+                >
+                  <div className="flex-shrink-0">
+                    <div className="w-12 h-12 bg-gradient-to-br from-blue-500 to-blue-600 rounded-full flex items-center justify-center shadow-lg">
+                      <FileText className="h-6 w-6 text-white" />
+                    </div>
                   </div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between">
-                      <h4 className="text-sm font-semibold text-gray-900 truncate">{atividade.titulo}</h4>
-                      <Badge variant="secondary" className="ml-2 flex-shrink-0">
-                        {atividade.tipo_registro}
-                      </Badge>
-                    </div>
-                    <div className="flex items-center gap-4 mt-1 text-xs text-gray-500">
-                      <span className="flex items-center gap-1">
-                        <User className="h-3 w-3" />
-                        {atividade.autor_nome}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Building2 className="h-3 w-3" />
-                        {atividade.obra_nome}
-                      </span>
-                      <span className="flex items-center gap-1">
-                        <Clock className="h-3 w-3" />
-                        {formatarData(atividade.created_at)}
-                      </span>
-                    </div>
-                    {/* ✅ NOVO: Mostrar classificação se disponível */}
-                    {atividade.classificacao_completa && (
-                      <div className="flex items-center gap-1 mt-1 text-xs text-emerald-600">
-                        <FolderTree className="h-3 w-3" />
-                        {atividade.classificacao_completa}
+                    <div className="flex items-start justify-between">
+                      <div className="flex-1">
+                        <h4 className="text-base font-semibold text-gray-900 mb-1">
+                          {atividade.titulo || "Sem título"}
+                        </h4>
+                        <div className="flex items-center space-x-4 text-sm text-gray-500 mb-2">
+                          <Badge variant="secondary" className="text-xs">
+                            {atividade.tipo_registro || "Sem tipo"}
+                          </Badge>
+                          {isAdmin() && atividade.obra_id && (
+                            <span className="flex items-center">
+                              <Building2 className="h-3 w-3 mr-1" />
+                              Obra #{atividade.obra_id}
+                            </span>
+                          )}
+                          <span className="flex items-center">
+                            <User className="h-3 w-3 mr-1" />
+                            {atividade.autor_nome || `Autor #${atividade.autor_id || "N/A"}`}
+                          </span>
+                        </div>
+                        {atividade.descricao && (
+                          <p className="text-sm text-gray-600 line-clamp-2 mb-2">
+                            {atividade.descricao.length > 120
+                              ? `${atividade.descricao.substring(0, 120)}...`
+                              : atividade.descricao}
+                          </p>
+                        )}
                       </div>
-                    )}
-                    {atividade.descricao && (
-                      <p className="text-sm text-gray-600 mt-1 line-clamp-2">{atividade.descricao}</p>
-                    )}
+                      <div className="text-right ml-4">
+                        <span className="text-xs text-gray-500 flex items-center">
+                          <Calendar className="h-3 w-3 mr-1" />
+                          {formatarData(atividade.created_at)}
+                        </span>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ))}
-            </div>
-          ) : (
-            <div className="text-center py-8 text-gray-500">
-              <Clock className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-              <p>Nenhuma atividade recente</p>
             </div>
           )}
         </CardContent>
