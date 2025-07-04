@@ -1,537 +1,522 @@
 "use client"
 
-import { useState, useEffect, useContext } from "react"
-import { AuthContext } from "../contexts/AuthContext"
-import {
-  Search,
-  Filter,
-  Download,
-  Eye,
-  Calendar,
-  FileText,
-  Building2,
-  Tag,
-  User,
-  ChevronDown,
-  ChevronUp,
-  AlertCircle,
-  Loader,
-} from "lucide-react"
+import { useState, useEffect } from "react"
+import { Button } from "@/components/ui/button"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Badge } from "@/components/ui/badge"
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog"
+import { toast } from "sonner"
+import { Search, Filter, Eye, Download, FileText, Calendar, Building2, Tag } from "lucide-react"
+import api from "../services/api"
 
 const Pesquisa = () => {
-  const { user } = useContext(AuthContext)
   const [loading, setLoading] = useState(false)
-  const [error, setError] = useState("")
   const [registros, setRegistros] = useState([])
-  const [filtros, setFiltros] = useState({})
-  const [filtrosExpandidos, setFiltrosExpandidos] = useState(false)
-
-  // Estados dos filtros
-  const [filtrosPesquisa, setFiltrosPesquisa] = useState({
+  const [filtros, setFiltros] = useState({
     palavra_chave: "",
     obra_id: "",
     tipo_registro_id: "",
-    classificacao_grupo: "",
     data_registro_inicio: "",
     data_registro_fim: "",
-    ordenacao: "data_desc",
+    classificacao_grupo: "",
+    classificacao_subgrupo: "",
   })
-
-  // Paginação
-  const [paginacao, setPaginacao] = useState({
+  const [obras, setObras] = useState([])
+  const [tiposRegistro, setTiposRegistro] = useState([])
+  const [classificacoes, setClassificacoes] = useState([])
+  const [grupos, setGrupos] = useState([])
+  const [subgrupos, setSubgrupos] = useState([])
+  const [pagination, setPagination] = useState({
     page: 1,
     per_page: 20,
     total: 0,
     pages: 0,
   })
+  const [selectedRegistro, setSelectedRegistro] = useState(null)
 
   useEffect(() => {
-    carregarFiltros()
-    pesquisar()
+    fetchFiltros()
+    buscarRegistros()
   }, [])
 
-  const carregarFiltros = async () => {
-    try {
-      const token = localStorage.getItem("token")
-      const response = await fetch("/api/pesquisa/filtros", {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-      })
+  useEffect(() => {
+    buscarRegistros()
+  }, [pagination.page])
 
-      if (response.ok) {
-        const data = await response.json()
-        setFiltros(data)
-      } else {
-        console.warn("Erro ao carregar filtros:", response.status)
+  useEffect(() => {
+    // Quando o grupo muda, atualizar os subgrupos disponíveis
+    if (filtros.classificacao_grupo) {
+      const subgruposDoGrupo = classificacoes.filter((c) => c.grupo === filtros.classificacao_grupo)
+      setSubgrupos(subgruposDoGrupo)
+
+      // Limpar subgrupo se não for válido para o novo grupo
+      if (filtros.classificacao_subgrupo) {
+        const subgrupoValido = subgruposDoGrupo.find((s) => s.subgrupo === filtros.classificacao_subgrupo)
+        if (!subgrupoValido) {
+          setFiltros((prev) => ({ ...prev, classificacao_subgrupo: "" }))
+        }
       }
-    } catch (err) {
-      console.error("Erro ao carregar filtros:", err)
+    } else {
+      setSubgrupos([])
+      setFiltros((prev) => ({ ...prev, classificacao_subgrupo: "" }))
+    }
+  }, [filtros.classificacao_grupo, classificacoes])
+
+  const fetchFiltros = async () => {
+    try {
+      const [obrasRes, tiposRes, classificacoesRes] = await Promise.all([
+        api.get("/obras/"),
+        api.get("/tipos-registro/"),
+        api.get("/classificacoes/"),
+      ])
+
+      setObras(obrasRes.data || [])
+      setTiposRegistro(tiposRes.data || [])
+      setClassificacoes(classificacoesRes.data || [])
+
+      // Extrair grupos únicos
+      const gruposUnicos = [...new Set((classificacoesRes.data || []).map((c) => c.grupo))].filter(Boolean).sort()
+      setGrupos(gruposUnicos)
+    } catch (error) {
+      console.error("Erro ao carregar filtros:", error)
+      toast.error("Erro ao carregar filtros")
     }
   }
 
-  const pesquisar = async (novaPagina = 1) => {
+  const buscarRegistros = async (resetPage = false) => {
+    setLoading(true)
     try {
-      setLoading(true)
-      setError("")
+      const params = new URLSearchParams()
 
-      const params = new URLSearchParams({
-        page: novaPagina.toString(),
-        per_page: paginacao.per_page.toString(),
-        ...filtrosPesquisa,
-      })
-
-      // Remover parâmetros vazios
-      for (const [key, value] of params.entries()) {
-        if (!value || value === "") {
-          params.delete(key)
+      // Adicionar filtros não vazios
+      Object.keys(filtros).forEach((key) => {
+        if (filtros[key] && filtros[key] !== "0" && filtros[key] !== "") {
+          params.append(key, filtros[key])
         }
-      }
-
-      const token = localStorage.getItem("token")
-      const response = await fetch(`/api/pesquisa?${params}`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
       })
 
-      if (response.ok) {
-        const data = await response.json()
-        setRegistros(data.registros || [])
-        setPaginacao({
-          page: data.pagination?.page || 1,
-          per_page: data.pagination?.per_page || 20,
-          total: data.pagination?.total || 0,
-          pages: data.pagination?.pages || 0,
+      // Paginação
+      const currentPage = resetPage ? 1 : pagination.page
+      params.append("page", currentPage.toString())
+      params.append("per_page", pagination.per_page.toString())
+
+      const response = await api.get(`/pesquisa/?${params.toString()}`)
+
+      if (response.data) {
+        setRegistros(response.data.registros || [])
+        setPagination({
+          page: response.data.page || 1,
+          per_page: response.data.per_page || 20,
+          total: response.data.total || 0,
+          pages: response.data.pages || 0,
         })
       } else {
-        const errorData = await response.json()
-        setError(errorData.message || "Erro ao realizar pesquisa")
+        setRegistros([])
+        setPagination((prev) => ({ ...prev, total: 0, pages: 0 }))
       }
-    } catch (err) {
-      console.error("Erro na pesquisa:", err)
-      setError("Erro ao realizar pesquisa")
+    } catch (error) {
+      console.error("Erro ao buscar registros:", error)
+      toast.error("Erro ao buscar registros")
+      setRegistros([])
+      setPagination((prev) => ({ ...prev, total: 0, pages: 0 }))
     } finally {
       setLoading(false)
     }
   }
 
   const handleFiltroChange = (campo, valor) => {
-    setFiltrosPesquisa((prev) => ({
+    setFiltros((prev) => ({
       ...prev,
       [campo]: valor,
     }))
   }
 
-  const handleSubmitPesquisa = (e) => {
-    e.preventDefault()
-    pesquisar(1)
+  const handleBuscar = () => {
+    setPagination((prev) => ({ ...prev, page: 1 }))
+    buscarRegistros(true)
   }
 
   const limparFiltros = () => {
-    setFiltrosPesquisa({
+    setFiltros({
       palavra_chave: "",
       obra_id: "",
       tipo_registro_id: "",
-      classificacao_grupo: "",
       data_registro_inicio: "",
       data_registro_fim: "",
-      ordenacao: "data_desc",
+      classificacao_grupo: "",
+      classificacao_subgrupo: "",
     })
-    setTimeout(() => pesquisar(1), 100)
+    setPagination((prev) => ({ ...prev, page: 1 }))
+    setTimeout(() => buscarRegistros(true), 100)
   }
 
   const exportarResultados = async () => {
     try {
-      setLoading(true)
-
-      const token = localStorage.getItem("token")
-      const response = await fetch("/api/pesquisa/exportar", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify(filtrosPesquisa),
+      const params = new URLSearchParams()
+      Object.keys(filtros).forEach((key) => {
+        if (filtros[key] && filtros[key] !== "0") {
+          params.append(key, filtros[key])
+        }
       })
 
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.style.display = "none"
-        a.href = url
-        a.download = `pesquisa_registros_${new Date().toISOString().split("T")[0]}.xlsx`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-      } else {
-        const errorData = await response.json()
-        setError(errorData.message || "Erro ao exportar resultados")
-      }
-    } catch (err) {
-      console.error("Erro ao exportar:", err)
-      setError("Erro ao exportar resultados")
-    } finally {
-      setLoading(false)
+      const response = await api.get(`/pesquisa/exportar?${params.toString()}`, {
+        responseType: "blob",
+      })
+
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement("a")
+      link.href = url
+      link.setAttribute("download", `registros_${new Date().toISOString().split("T")[0]}.xlsx`)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      toast.success("Exportação realizada com sucesso!")
+    } catch (error) {
+      console.error("Erro ao exportar:", error)
+      toast.error("Erro ao exportar resultados")
     }
   }
 
-  const visualizarRegistro = (registro) => {
-    // Implementar modal de visualização ou navegação
-    console.log("Visualizar registro:", registro)
-  }
-
-  const downloadAnexo = async (registroId) => {
+  const formatarData = (dataString) => {
+    if (!dataString) return ""
     try {
-      const token = localStorage.getItem("token")
-      const response = await fetch(`/api/pesquisa/${registroId}/download`, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-        },
-      })
-
-      if (response.ok) {
-        const blob = await response.blob()
-        const url = window.URL.createObjectURL(blob)
-        const a = document.createElement("a")
-        a.style.display = "none"
-        a.href = url
-        a.download = `anexo_${registroId}`
-        document.body.appendChild(a)
-        a.click()
-        window.URL.revokeObjectURL(url)
-      } else {
-        const errorData = await response.json()
-        setError(errorData.message || "Erro ao baixar anexo")
-      }
-    } catch (err) {
-      console.error("Erro ao baixar anexo:", err)
-      setError("Erro ao baixar anexo")
+      return new Date(dataString).toLocaleDateString("pt-BR")
+    } catch {
+      return dataString
     }
+  }
+
+  const getObraNome = (obraId) => {
+    const obra = obras.find((o) => o.id === obraId)
+    return obra ? obra.nome : "Obra não encontrada"
+  }
+
+  const getTipoNome = (tipoId) => {
+    const tipo = tiposRegistro.find((t) => t.id === tipoId)
+    return tipo ? tipo.nome : "Tipo não encontrado"
   }
 
   return (
     <div className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-2xl font-bold text-gray-900">Pesquisa Avançada</h1>
-          <p className="text-gray-600">Encontre registros usando filtros avançados</p>
+          <h1 className="text-2xl font-bold text-gray-900">Pesquisa de Registros</h1>
+          <p className="text-gray-600">Busque e filtre registros no sistema</p>
         </div>
-        <div className="flex space-x-3">
-          <button
-            onClick={exportarResultados}
-            disabled={loading || registros.length === 0}
-            className="inline-flex items-center px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-          >
+        {registros.length > 0 && (
+          <Button onClick={exportarResultados} variant="outline">
             <Download className="h-4 w-4 mr-2" />
             Exportar
-          </button>
-        </div>
+          </Button>
+        )}
       </div>
 
-      {/* Formulário de Pesquisa */}
-      <div className="bg-white rounded-lg shadow p-6">
-        <form onSubmit={handleSubmitPesquisa} className="space-y-4">
-          {/* Pesquisa por palavra-chave */}
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-2">Palavra-chave</label>
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-              <input
-                type="text"
-                value={filtrosPesquisa.palavra_chave}
+      {/* Filtros */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <Filter className="h-5 w-5 mr-2" />
+            Filtros de Pesquisa
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+            {/* Palavra-chave */}
+            <div className="space-y-2">
+              <Label htmlFor="palavra_chave">Palavra-chave</Label>
+              <Input
+                id="palavra_chave"
+                placeholder="Buscar na descrição..."
+                value={filtros.palavra_chave}
                 onChange={(e) => handleFiltroChange("palavra_chave", e.target.value)}
-                placeholder="Buscar em título e descrição..."
-                className="pl-10 block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
+              />
+            </div>
+
+            {/* Obra */}
+            <div className="space-y-2">
+              <Label htmlFor="obra">Obra</Label>
+              <Select value={filtros.obra_id} onValueChange={(value) => handleFiltroChange("obra_id", value)}>
+                <SelectTrigger>
+                  <SelectValue placeholder="Todas as obras" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Todas as obras</SelectItem>
+                  {obras.map((obra) => (
+                    <SelectItem key={obra.id} value={obra.id.toString()}>
+                      {obra.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Tipo de Registro */}
+            <div className="space-y-2">
+              <Label htmlFor="tipo">Tipo de Registro</Label>
+              <Select
+                value={filtros.tipo_registro_id}
+                onValueChange={(value) => handleFiltroChange("tipo_registro_id", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos os tipos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Todos os tipos</SelectItem>
+                  {tiposRegistro.map((tipo) => (
+                    <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                      {tipo.nome}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Classificação Grupo */}
+            <div className="space-y-2">
+              <Label htmlFor="grupo">Classificação Grupo</Label>
+              <Select
+                value={filtros.classificacao_grupo}
+                onValueChange={(value) => handleFiltroChange("classificacao_grupo", value)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos os grupos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Todos os grupos</SelectItem>
+                  {grupos.map((grupo) => (
+                    <SelectItem key={grupo} value={grupo}>
+                      {grupo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Classificação Subgrupo */}
+            <div className="space-y-2">
+              <Label htmlFor="subgrupo">Classificação Subgrupo</Label>
+              <Select
+                value={filtros.classificacao_subgrupo}
+                onValueChange={(value) => handleFiltroChange("classificacao_subgrupo", value)}
+                disabled={!filtros.classificacao_grupo}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Todos os subgrupos" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="0">Todos os subgrupos</SelectItem>
+                  {subgrupos.map((item) => (
+                    <SelectItem key={item.id} value={item.subgrupo}>
+                      {item.subgrupo}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            {/* Data Início */}
+            <div className="space-y-2">
+              <Label htmlFor="data_inicio">Data Início</Label>
+              <Input
+                id="data_inicio"
+                type="date"
+                value={filtros.data_registro_inicio}
+                onChange={(e) => handleFiltroChange("data_registro_inicio", e.target.value)}
+              />
+            </div>
+
+            {/* Data Fim */}
+            <div className="space-y-2">
+              <Label htmlFor="data_fim">Data Fim</Label>
+              <Input
+                id="data_fim"
+                type="date"
+                value={filtros.data_registro_fim}
+                onChange={(e) => handleFiltroChange("data_registro_fim", e.target.value)}
               />
             </div>
           </div>
 
-          {/* Filtros Avançados */}
-          <div>
-            <button
-              type="button"
-              onClick={() => setFiltrosExpandidos(!filtrosExpandidos)}
-              className="flex items-center text-sm font-medium text-blue-600 hover:text-blue-800"
-            >
-              <Filter className="h-4 w-4 mr-1" />
-              Filtros Avançados
-              {filtrosExpandidos ? <ChevronUp className="h-4 w-4 ml-1" /> : <ChevronDown className="h-4 w-4 ml-1" />}
-            </button>
-
-            {filtrosExpandidos && (
-              <div className="mt-4 grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-                {/* Obra */}
-                {user?.role === "administrador" && filtros.obras && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Obra</label>
-                    <select
-                      value={filtrosPesquisa.obra_id}
-                      onChange={(e) => handleFiltroChange("obra_id", e.target.value)}
-                      className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Todas as obras</option>
-                      {filtros.obras.map((obra) => (
-                        <option key={obra.id} value={obra.id}>
-                          {obra.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Tipo de Registro */}
-                {filtros.tipos_registro && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Tipo de Registro</label>
-                    <select
-                      value={filtrosPesquisa.tipo_registro_id}
-                      onChange={(e) => handleFiltroChange("tipo_registro_id", e.target.value)}
-                      className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Todos os tipos</option>
-                      {filtros.tipos_registro.map((tipo) => (
-                        <option key={tipo.id} value={tipo.id}>
-                          {tipo.nome}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Classificação */}
-                {filtros.grupos_classificacao && filtros.grupos_classificacao.length > 0 && (
-                  <div>
-                    <label className="block text-sm font-medium text-gray-700 mb-1">Classificação</label>
-                    <select
-                      value={filtrosPesquisa.classificacao_grupo}
-                      onChange={(e) => handleFiltroChange("classificacao_grupo", e.target.value)}
-                      className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                    >
-                      <option value="">Todas as classificações</option>
-                      {filtros.grupos_classificacao.map((grupo) => (
-                        <option key={grupo} value={grupo}>
-                          {grupo}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                )}
-
-                {/* Data Início */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Data Início</label>
-                  <input
-                    type="date"
-                    value={filtrosPesquisa.data_registro_inicio}
-                    onChange={(e) => handleFiltroChange("data_registro_inicio", e.target.value)}
-                    className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                {/* Data Fim */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Data Fim</label>
-                  <input
-                    type="date"
-                    value={filtrosPesquisa.data_registro_fim}
-                    onChange={(e) => handleFiltroChange("data_registro_fim", e.target.value)}
-                    className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  />
-                </div>
-
-                {/* Ordenação */}
-                <div>
-                  <label className="block text-sm font-medium text-gray-700 mb-1">Ordenar por</label>
-                  <select
-                    value={filtrosPesquisa.ordenacao}
-                    onChange={(e) => handleFiltroChange("ordenacao", e.target.value)}
-                    className="block w-full border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500"
-                  >
-                    <option value="data_desc">Data (Mais Recente)</option>
-                    <option value="data_asc">Data (Mais Antiga)</option>
-                    <option value="titulo_asc">Título (A-Z)</option>
-                    <option value="titulo_desc">Título (Z-A)</option>
-                  </select>
-                </div>
-              </div>
-            )}
-          </div>
-
-          {/* Botões */}
-          <div className="flex justify-between">
-            <button
-              type="button"
-              onClick={limparFiltros}
-              className="px-4 py-2 border border-gray-300 rounded-md shadow-sm text-sm font-medium text-gray-700 bg-white hover:bg-gray-50"
-            >
+          <div className="flex justify-end space-x-4 mt-6">
+            <Button variant="outline" onClick={limparFiltros}>
               Limpar Filtros
-            </button>
-            <button
-              type="submit"
-              disabled={loading}
-              className="px-4 py-2 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 disabled:opacity-50"
-            >
-              {loading ? (
-                <>
-                  <Loader className="h-4 w-4 mr-2 animate-spin" />
-                  Pesquisando...
-                </>
-              ) : (
-                <>
-                  <Search className="h-4 w-4 mr-2" />
-                  Pesquisar
-                </>
-              )}
-            </button>
+            </Button>
+            <Button onClick={handleBuscar} disabled={loading}>
+              <Search className="h-4 w-4 mr-2" />
+              {loading ? "Buscando..." : "Buscar"}
+            </Button>
           </div>
-        </form>
-      </div>
-
-      {/* Erro */}
-      {error && (
-        <div className="bg-red-50 border border-red-200 rounded-md p-4">
-          <div className="flex">
-            <AlertCircle className="h-5 w-5 text-red-400" />
-            <div className="ml-3">
-              <p className="text-sm text-red-700">{error}</p>
-            </div>
-          </div>
-        </div>
-      )}
+        </CardContent>
+      </Card>
 
       {/* Resultados */}
-      <div className="bg-white rounded-lg shadow">
-        <div className="px-6 py-4 border-b border-gray-200">
-          <div className="flex items-center justify-between">
-            <h3 className="text-lg font-medium text-gray-900">Resultados da Pesquisa</h3>
-            <span className="text-sm text-gray-500">{paginacao.total} registro(s) encontrado(s)</span>
-          </div>
-        </div>
-
-        {loading ? (
-          <div className="p-8 text-center">
-            <Loader className="h-8 w-8 animate-spin mx-auto text-blue-600" />
-            <p className="mt-2 text-gray-500">Carregando resultados...</p>
-          </div>
-        ) : registros.length === 0 ? (
-          <div className="p-8 text-center">
-            <FileText className="h-12 w-12 mx-auto text-gray-400" />
-            <h3 className="mt-2 text-sm font-medium text-gray-900">Nenhum resultado encontrado</h3>
-            <p className="mt-1 text-sm text-gray-500">Tente ajustar os filtros de pesquisa.</p>
-          </div>
-        ) : (
-          <div className="divide-y divide-gray-200">
-            {registros.map((registro) => (
-              <div key={registro.id} className="p-6 hover:bg-gray-50">
-                <div className="flex items-start justify-between">
-                  <div className="flex-1 min-w-0">
-                    <h4 className="text-lg font-medium text-gray-900 truncate">{registro.titulo}</h4>
-                    <p className="text-sm text-gray-600 mt-1 line-clamp-2">{registro.descricao}</p>
-
-                    <div className="mt-2 flex items-center space-x-4 text-xs text-gray-500">
-                      {registro.obra && (
-                        <div className="flex items-center">
+      <Card>
+        <CardHeader>
+          <CardTitle>
+            Resultados da Pesquisa
+            {pagination.total > 0 && (
+              <span className="text-sm font-normal text-gray-500 ml-2">
+                ({pagination.total} registro{pagination.total !== 1 ? "s" : ""} encontrado
+                {pagination.total !== 1 ? "s" : ""})
+              </span>
+            )}
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {loading ? (
+            <div className="flex items-center justify-center py-8">
+              <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
+              <span className="ml-2">Buscando registros...</span>
+            </div>
+          ) : registros.length > 0 ? (
+            <div className="space-y-4">
+              {registros.map((registro) => (
+                <div key={registro.id} className="border rounded-lg p-4 hover:bg-gray-50">
+                  <div className="flex justify-between items-start">
+                    <div className="flex-1">
+                      <div className="flex items-center space-x-2 mb-2">
+                        <Badge variant="outline">
                           <Building2 className="h-3 w-3 mr-1" />
-                          {registro.obra.nome}
-                        </div>
-                      )}
+                          {getObraNome(registro.obra_id)}
+                        </Badge>
+                        <Badge variant="secondary">
+                          <FileText className="h-3 w-3 mr-1" />
+                          {getTipoNome(registro.tipo_registro_id)}
+                        </Badge>
+                        {registro.classificacao_grupo && (
+                          <Badge variant="outline">
+                            <Tag className="h-3 w-3 mr-1" />
+                            {registro.classificacao_grupo}
+                            {registro.classificacao_subgrupo && ` / ${registro.classificacao_subgrupo}`}
+                          </Badge>
+                        )}
+                      </div>
 
-                      {registro.tipo_registro && (
-                        <div className="flex items-center">
-                          <Tag className="h-3 w-3 mr-1" />
-                          {registro.tipo_registro}
-                        </div>
-                      )}
+                      <h3 className="font-medium text-gray-900 mb-1">{registro.descricao || "Sem descrição"}</h3>
 
-                      {registro.data_registro && (
-                        <div className="flex items-center">
-                          <Calendar className="h-3 w-3 mr-1" />
-                          {new Date(registro.data_registro).toLocaleDateString("pt-BR")}
-                        </div>
-                      )}
+                      {registro.observacoes && <p className="text-sm text-gray-600 mb-2">{registro.observacoes}</p>}
 
-                      {registro.autor && (
-                        <div className="flex items-center">
-                          <User className="h-3 w-3 mr-1" />
-                          {registro.autor.username}
-                        </div>
-                      )}
+                      <div className="flex items-center text-sm text-gray-500">
+                        <Calendar className="h-4 w-4 mr-1" />
+                        {formatarData(registro.data_registro)}
+                        {registro.anexos_count > 0 && (
+                          <span className="ml-4">
+                            📎 {registro.anexos_count} anexo{registro.anexos_count !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                      </div>
                     </div>
 
-                    {(registro.classificacao_grupo || registro.classificacao_subgrupo) && (
-                      <div className="mt-2">
-                        <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-blue-100 text-blue-800">
-                          {registro.classificacao_grupo}
-                          {registro.classificacao_subgrupo && ` > ${registro.classificacao_subgrupo}`}
-                        </span>
-                      </div>
-                    )}
-                  </div>
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button variant="outline" size="sm" onClick={() => setSelectedRegistro(registro)}>
+                          <Eye className="h-4 w-4 mr-1" />
+                          Ver
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent className="max-w-2xl">
+                        <DialogHeader>
+                          <DialogTitle>Detalhes do Registro</DialogTitle>
+                        </DialogHeader>
+                        {selectedRegistro && (
+                          <div className="space-y-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <Label className="font-medium">Obra:</Label>
+                                <p>{getObraNome(selectedRegistro.obra_id)}</p>
+                              </div>
+                              <div>
+                                <Label className="font-medium">Tipo:</Label>
+                                <p>{getTipoNome(selectedRegistro.tipo_registro_id)}</p>
+                              </div>
+                              <div>
+                                <Label className="font-medium">Data:</Label>
+                                <p>{formatarData(selectedRegistro.data_registro)}</p>
+                              </div>
+                              {selectedRegistro.classificacao_grupo && (
+                                <div>
+                                  <Label className="font-medium">Classificação:</Label>
+                                  <p>
+                                    {selectedRegistro.classificacao_grupo}
+                                    {selectedRegistro.classificacao_subgrupo &&
+                                      ` / ${selectedRegistro.classificacao_subgrupo}`}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
 
-                  <div className="flex items-center space-x-2 ml-4">
-                    <button
-                      onClick={() => visualizarRegistro(registro)}
-                      className="p-2 text-gray-400 hover:text-gray-600"
-                      title="Visualizar"
-                    >
-                      <Eye className="h-4 w-4" />
-                    </button>
+                            <div>
+                              <Label className="font-medium">Descrição:</Label>
+                              <p className="mt-1">{selectedRegistro.descricao}</p>
+                            </div>
 
-                    {registro.anexo_url && (
-                      <button
-                        onClick={() => downloadAnexo(registro.id)}
-                        className="p-2 text-gray-400 hover:text-gray-600"
-                        title="Baixar anexo"
-                      >
-                        <Download className="h-4 w-4" />
-                      </button>
-                    )}
+                            {selectedRegistro.observacoes && (
+                              <div>
+                                <Label className="font-medium">Observações:</Label>
+                                <p className="mt-1">{selectedRegistro.observacoes}</p>
+                              </div>
+                            )}
+
+                            {selectedRegistro.anexos_count > 0 && (
+                              <div>
+                                <Label className="font-medium">Anexos:</Label>
+                                <p className="mt-1">
+                                  {selectedRegistro.anexos_count} arquivo
+                                  {selectedRegistro.anexos_count !== 1 ? "s" : ""} anexado
+                                  {selectedRegistro.anexos_count !== 1 ? "s" : ""}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
-              </div>
-            ))}
-          </div>
-        )}
+              ))}
 
-        {/* Paginação */}
-        {paginacao.pages > 1 && (
-          <div className="px-6 py-4 border-t border-gray-200">
-            <div className="flex items-center justify-between">
-              <div className="text-sm text-gray-700">
-                Mostrando {(paginacao.page - 1) * paginacao.per_page + 1} a{" "}
-                {Math.min(paginacao.page * paginacao.per_page, paginacao.total)} de {paginacao.total} resultados
-              </div>
+              {/* Paginação */}
+              {pagination.pages > 1 && (
+                <div className="flex justify-center items-center space-x-2 mt-6">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page <= 1}
+                    onClick={() => setPagination((prev) => ({ ...prev, page: prev.page - 1 }))}
+                  >
+                    Anterior
+                  </Button>
 
-              <div className="flex space-x-2">
-                <button
-                  onClick={() => pesquisar(paginacao.page - 1)}
-                  disabled={paginacao.page <= 1 || loading}
-                  className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Anterior
-                </button>
+                  <span className="text-sm text-gray-600">
+                    Página {pagination.page} de {pagination.pages}
+                  </span>
 
-                <span className="px-3 py-1 text-sm text-gray-700">
-                  Página {paginacao.page} de {paginacao.pages}
-                </span>
-
-                <button
-                  onClick={() => pesquisar(paginacao.page + 1)}
-                  disabled={paginacao.page >= paginacao.pages || loading}
-                  className="px-3 py-1 border border-gray-300 rounded text-sm font-medium text-gray-700 bg-white hover:bg-gray-50 disabled:opacity-50"
-                >
-                  Próxima
-                </button>
-              </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    disabled={pagination.page >= pagination.pages}
+                    onClick={() => setPagination((prev) => ({ ...prev, page: prev.page + 1 }))}
+                  >
+                    Próxima
+                  </Button>
+                </div>
+              )}
             </div>
-          </div>
-        )}
-      </div>
+          ) : (
+            <div className="text-center py-8 text-gray-500">
+              <Search className="h-12 w-12 mx-auto mb-4 opacity-50" />
+              <p>Nenhum registro encontrado</p>
+              <p className="text-sm">Tente ajustar os filtros de pesquisa</p>
+            </div>
+          )}
+        </CardContent>
+      </Card>
     </div>
   )
 }
