@@ -3,6 +3,7 @@ from werkzeug.utils import secure_filename
 from models.registro import Registro, db
 from models.obra import Obra
 from models.tipo_registro import TipoRegistro
+from models.classificacao import Classificacao
 from routes.auth import token_required, obra_access_required
 from datetime import datetime
 import pandas as pd
@@ -34,6 +35,7 @@ def download_template(current_user):
             obras = Obra.query.filter_by(id=current_user.obra_id).all()
 
         tipos_registro = TipoRegistro.query.all()
+        classificacoes = Classificacao.query.all()
 
         # Criar DataFrame com exemplo
         template_data = {
@@ -47,7 +49,10 @@ def download_template(current_user):
                 'Anotação de Responsabilidade Técnica do projeto estrutural'
             ],
             'obra_id': [obras[0].id if obras else 1, obras[0].id if obras else 1],
-            'obra_nome': [obras[0].nome if obras else 'Obra Exemplo', obras[0].nome if obras else 'Obra Exemplo']
+            'obra_nome': [obras[0].nome if obras else 'Obra Exemplo', obras[0].nome if obras else 'Obra Exemplo'],
+            'classificacao_grupo': ['Atividades em Campo', 'Planejamento, Documentos e Licenças'],
+            'classificacao_subgrupo': ['Início de Atividade', 'Entrega de Documentação/Plano/Projeto'],
+            'classificacao_id': [1, 25]  # IDs das classificações
         }
 
         # Criar arquivo Excel
@@ -74,20 +79,32 @@ def download_template(current_user):
             } for tipo in tipos_registro])
             df_tipos.to_excel(writer, sheet_name='Tipos_Registro', index=False)
 
+            # Aba com classificações
+            df_classificacoes = pd.DataFrame([{
+                'id': classificacao.id,
+                'grupo': classificacao.grupo,
+                'subgrupo': classificacao.subgrupo
+            } for classificacao in classificacoes])
+            df_classificacoes.to_excel(
+                writer, sheet_name='Classificações', index=False)
+
             # Aba com instruções
             instrucoes = pd.DataFrame({
                 'Campo': [
                     'titulo', 'tipo_registro', 'tipo_registro_id', 'data_registro',
-                    'codigo_numero', 'descricao', 'obra_id', 'obra_nome'
+                    'codigo_numero', 'descricao', 'obra_id', 'obra_nome',
+                    'classificacao_grupo', 'classificacao_subgrupo', 'classificacao_id'
                 ],
-                'Obrigatório': ['Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Não'],
+                'Obrigatório': ['Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Sim', 'Não', 'Sim', 'Sim', 'Sim'],
                 'Formato': [
                     'Texto livre', 'Nome do tipo', 'ID numérico', 'YYYY-MM-DD',
-                    'Código único', 'Texto livre', 'ID numérico', 'Apenas referência'
+                    'Código único', 'Texto livre', 'ID numérico', 'Apenas referência',
+                    'Nome do grupo', 'Nome do subgrupo', 'ID da classificação'
                 ],
                 'Exemplo': [
                     'Contrato Principal', 'Contrato', '1', '2024-01-15',
-                    'CONT-001', 'Descrição detalhada...', '1', 'Obra Exemplo'
+                    'CONT-001', 'Descrição detalhada...', '1', 'Obra Exemplo',
+                    'Atividades em Campo', 'Início de Atividade', '1'
                 ]
             })
             instrucoes.to_excel(writer, sheet_name='Instruções', index=False)
@@ -132,7 +149,8 @@ def processar_planilha(current_user):
 
         # Validar colunas obrigatórias
         colunas_obrigatorias = ['titulo', 'tipo_registro', 'tipo_registro_id',
-                                'data_registro', 'codigo_numero', 'descricao', 'obra_id']
+                                'data_registro', 'codigo_numero', 'descricao', 'obra_id',
+                                'classificacao_grupo', 'classificacao_subgrupo', 'classificacao_id']
         colunas_faltantes = [
             col for col in colunas_obrigatorias if col not in df.columns]
 
@@ -182,6 +200,20 @@ def processar_planilha(current_user):
                     else:
                         registro['obra_id'] = obra_id
                         registro['obra_nome'] = obra.nome
+
+                # Validação de classificação
+                if pd.isna(row['classificacao_id']):
+                    erro_linha.append('ID da classificação é obrigatório')
+                else:
+                    classificacao_id = int(row['classificacao_id'])
+                    classificacao = Classificacao.query.get(classificacao_id)
+                    if not classificacao:
+                        erro_linha.append(
+                            f'Classificação ID {classificacao_id} não encontrada')
+                    else:
+                        registro['classificacao_id'] = classificacao_id
+                        registro['classificacao_grupo'] = classificacao.grupo
+                        registro['classificacao_subgrupo'] = classificacao.subgrupo
 
                 # Data
                 if pd.isna(row['data_registro']):
@@ -275,7 +307,13 @@ def finalizar_importacao(current_user):
                     nome_arquivo_original=registro_data.get(
                         'nome_arquivo_original'),
                     formato_arquivo=registro_data.get('formato_arquivo'),
-                    tamanho_arquivo=registro_data.get('tamanho_arquivo')
+                    tamanho_arquivo=registro_data.get('tamanho_arquivo'),
+                    # Campos de classificação
+                    classificacao_id=registro_data.get('classificacao_id'),
+                    classificacao_grupo=registro_data.get(
+                        'classificacao_grupo'),
+                    classificacao_subgrupo=registro_data.get(
+                        'classificacao_subgrupo')
                 )
 
                 db.session.add(registro)

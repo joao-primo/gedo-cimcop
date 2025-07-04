@@ -18,7 +18,7 @@ import {
   Calendar,
   BarChart3,
   Activity,
-  Target,
+  Paperclip,
   AlertTriangle,
   Filter,
 } from "lucide-react"
@@ -132,6 +132,18 @@ const Dashboard = () => {
         estatisticasFiltradas.registros_por_tipo = []
       }
 
+      // Garantir que registros_por_classificacao seja sempre um array
+      if (
+        estatisticasFiltradas.registros_por_classificacao &&
+        Array.isArray(estatisticasFiltradas.registros_por_classificacao)
+      ) {
+        estatisticasFiltradas.registros_por_classificacao = estatisticasFiltradas.registros_por_classificacao
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 8) // Top 8 classificações
+      } else {
+        estatisticasFiltradas.registros_por_classificacao = []
+      }
+
       // Garantir que registros_por_obra seja sempre um array
       if (!Array.isArray(estatisticasFiltradas.registros_por_obra)) {
         estatisticasFiltradas.registros_por_obra = []
@@ -214,6 +226,9 @@ const Dashboard = () => {
   const registrosPorTipo = Array.isArray(dados.estatisticas.registros_por_tipo)
     ? dados.estatisticas.registros_por_tipo
     : []
+  const registrosPorClassificacao = Array.isArray(dados.estatisticas.registros_por_classificacao)
+    ? dados.estatisticas.registros_por_classificacao
+    : []
   const timelineData = Array.isArray(dados.timeline) ? dados.timeline : []
   const registrosPorObra = Array.isArray(dados.estatisticas.registros_por_obra)
     ? dados.estatisticas.registros_por_obra
@@ -227,6 +242,54 @@ const Dashboard = () => {
           label: "Registros",
           data: registrosPorTipo.map((item) => item.count || 0),
           backgroundColor: gerarGradienteAzul(registrosPorTipo),
+          borderWidth: 0,
+          borderRadius: 4,
+        },
+      ],
+    },
+    options: {
+      indexAxis: "y",
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          display: false,
+        },
+        title: {
+          display: false,
+        },
+        tooltip: {
+          callbacks: {
+            label: (context) => `${context.parsed.x} registros`,
+          },
+        },
+      },
+      scales: {
+        x: {
+          beginAtZero: true,
+          ticks: {
+            stepSize: 1,
+          },
+        },
+        y: {
+          ticks: {
+            font: {
+              size: 11,
+            },
+          },
+        },
+      },
+    },
+  }
+
+  const graficoClassificacaoConfig = {
+    data: {
+      labels: registrosPorClassificacao.map((item) => item.grupo || "Sem classificação"),
+      datasets: [
+        {
+          label: "Registros",
+          data: registrosPorClassificacao.map((item) => item.count || 0),
+          backgroundColor: gerarGradienteAzul(registrosPorClassificacao),
           borderWidth: 0,
           borderRadius: 4,
         },
@@ -526,14 +589,16 @@ const Dashboard = () => {
 
         <Card className="border-l-4 border-l-purple-500">
           <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-            <CardTitle className="text-sm font-medium text-gray-600">Tipos Ativos</CardTitle>
+            <CardTitle className="text-sm font-medium text-gray-600">Registros com Anexo</CardTitle>
             <div className="p-2 bg-purple-100 rounded-full">
-              <Target className="h-4 w-4 text-purple-600" />
+              <Paperclip className="h-4 w-4 text-purple-600" />
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-900">{registrosPorTipo.length || 0}</div>
-            <p className="text-xs text-gray-500 mt-1">Top 10 tipos</p>
+            <div className="text-3xl font-bold text-gray-900">
+              {dados.estatisticas.registros_anexos?.com_anexo || 0}
+            </div>
+            <p className="text-xs text-gray-500 mt-1">De {dados.estatisticas.total_registros || 0} registros totais</p>
           </CardContent>
         </Card>
 
@@ -612,6 +677,24 @@ const Dashboard = () => {
           </CardContent>
         </Card>
       </div>
+
+      {/* Gráfico de Classificações */}
+      {registrosPorClassificacao.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+              Top 8 Classificações
+            </CardTitle>
+            <CardDescription>Distribuição de registros por grupo de classificação</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="h-80">
+              <Bar {...graficoClassificacaoConfig} />
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Gráfico de Obras - Agora com barras menores */}
       {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (

@@ -15,6 +15,12 @@ class Registro(db.Model):
     codigo_numero = db.Column(db.String(50), nullable=True)
     descricao = db.Column(db.Text, nullable=False)
 
+    # NOVO: Campos de classificação
+    classificacao_grupo = db.Column(db.String(100), nullable=True)
+    classificacao_subgrupo = db.Column(db.String(100), nullable=True)
+    classificacao_id = db.Column(db.Integer, db.ForeignKey(
+        'classificacoes.id'), nullable=True)
+
     # ATUALIZADO: Campos para Vercel Blob
     # Mantido para compatibilidade
     caminho_anexo = db.Column(db.String(500), nullable=True)
@@ -38,11 +44,13 @@ class Registro(db.Model):
     obra = db.relationship('Obra', overlaps="registros")
     tipo_registro_rel = db.relationship(
         'TipoRegistro', overlaps="registros,tipo_registro_obj")
+    classificacao_rel = db.relationship('Classificacao', backref='registros')
 
     def __init__(self, titulo, tipo_registro, descricao, autor_id, obra_id,
                  data_registro=None, codigo_numero=None, caminho_anexo=None,
                  nome_arquivo_original=None, formato_arquivo=None, tamanho_arquivo=None,
-                 tipo_registro_id=None, blob_url=None, blob_pathname=None):
+                 tipo_registro_id=None, blob_url=None, blob_pathname=None,
+                 classificacao_grupo=None, classificacao_subgrupo=None, classificacao_id=None):
         self.titulo = titulo
         self.tipo_registro = tipo_registro
         self.descricao = descricao
@@ -57,6 +65,9 @@ class Registro(db.Model):
         self.formato_arquivo = formato_arquivo
         self.tamanho_arquivo = tamanho_arquivo
         self.tipo_registro_id = tipo_registro_id
+        self.classificacao_grupo = classificacao_grupo
+        self.classificacao_subgrupo = classificacao_subgrupo
+        self.classificacao_id = classificacao_id
 
     def to_dict(self):
         return {
@@ -65,6 +76,8 @@ class Registro(db.Model):
             'descricao': self.descricao,
             'tipo_registro': self.tipo_registro,
             'tipo_registro_nome': self.tipo_registro_rel.nome if self.tipo_registro_rel else None,
+            'classificacao_grupo': self.classificacao_grupo,
+            'classificacao_subgrupo': self.classificacao_subgrupo,
             'data_registro': self.data_registro.isoformat() if self.data_registro else None,
             'codigo_numero': self.codigo_numero,
             'autor_nome': self.autor.username if self.autor else None,

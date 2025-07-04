@@ -479,12 +479,21 @@ def create_registro(current_user):
         obra_id = request.form.get('obra_id')
         tipo_registro_id = request.form.get('tipo_registro_id')
 
+        # NOVO: Campos de classificação
+        classificacao_grupo = request.form.get(
+            'classificacao_grupo', '').strip()
+        classificacao_subgrupo = request.form.get(
+            'classificacao_subgrupo', '').strip()
+        classificacao_id = request.form.get('classificacao_id')
+
         print(f"📋 CREATE REGISTRO: Campos extraídos")
         print(f"   - titulo: '{titulo}'")
         print(f"   - tipo_registro: '{tipo_registro}'")
         print(f"   - descricao: '{descricao[:50]}...'")
         print(f"   - obra_id: '{obra_id}'")
         print(f"   - tipo_registro_id: '{tipo_registro_id}'")
+        print(f"   - classificacao_grupo: '{classificacao_grupo}'")
+        print(f"   - classificacao_subgrupo: '{classificacao_subgrupo}'")
 
         # ← CORREÇÃO: Conversão segura de IDs
         try:
@@ -492,6 +501,8 @@ def create_registro(current_user):
                 obra_id = int(obra_id)
             if tipo_registro_id:
                 tipo_registro_id = int(tipo_registro_id)
+            if classificacao_id:
+                classificacao_id = int(classificacao_id)
         except (ValueError, TypeError) as e:
             print(f"❌ CREATE REGISTRO: Erro na conversão de IDs: {str(e)}")
             return jsonify({'message': 'IDs inválidos fornecidos'}), 400
@@ -567,6 +578,9 @@ def create_registro(current_user):
                 data_registro=data_registro_dt,
                 codigo_numero=codigo_numero if codigo_numero else None,
                 tipo_registro_id=tipo_registro_id if tipo_registro_id else None,
+                classificacao_grupo=classificacao_grupo if classificacao_grupo else None,
+                classificacao_subgrupo=classificacao_subgrupo if classificacao_subgrupo else None,
+                classificacao_id=classificacao_id if classificacao_id else None,
                 **file_info
             )
 
@@ -578,6 +592,8 @@ def create_registro(current_user):
             print(f"   - Tem blob_url: {bool(registro.blob_url)}")
             print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
             print(f"   - Formato: {registro.formato_arquivo}")
+            print(
+                f"   - Classificação: {registro.classificacao_grupo} > {registro.classificacao_subgrupo}")
 
         except Exception as e:
             print(f"❌ CREATE REGISTRO: Erro ao salvar no banco: {str(e)}")
@@ -636,6 +652,15 @@ def update_registro(current_user, registro_id):
         if 'tipo_registro_id' in request.form:
             registro.tipo_registro_id = request.form.get(
                 'tipo_registro_id', type=int)
+
+        # NOVO: Atualizar campos de classificação
+        if 'classificacao_grupo' in request.form:
+            registro.classificacao_grupo = request.form['classificacao_grupo']
+        if 'classificacao_subgrupo' in request.form:
+            registro.classificacao_subgrupo = request.form['classificacao_subgrupo']
+        if 'classificacao_id' in request.form:
+            registro.classificacao_id = request.form.get(
+                'classificacao_id', type=int)
 
         # Processar novo arquivo
         if 'anexo' in request.files:

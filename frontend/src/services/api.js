@@ -67,6 +67,8 @@ export const dashboardAPI = {
 export const pesquisaAPI = {
   getFiltros: () => api.get("/pesquisa/filtros"),
   pesquisar: (params) => api.get("/pesquisa/", { params }),
+  exportar: (filtros) => api.post("/pesquisa/exportar", filtros, { responseType: "blob" }),
+  visualizar: (id) => api.get(`/pesquisa/${id}/visualizar`),
 }
 
 // APIs de Registros
@@ -186,6 +188,16 @@ export const tiposRegistroAPI = {
   obter: (id) => api.get(`/tipos-registro/${id}`),
   atualizar: (id, data) => api.put(`/tipos-registro/${id}`, data),
   deletar: (id) => api.delete(`/tipos-registro/${id}`),
+}
+
+// NOVO: APIs de Classificações
+export const classificacoesAPI = {
+  listar: () => api.get("/classificacoes/"),
+  grupos: () => api.get("/classificacoes/grupos"),
+  subgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${encodeURIComponent(grupo)}`),
+  criar: (data) => api.post("/classificacoes/", data),
+  atualizar: (id, data) => api.put(`/classificacoes/${id}`, data),
+  deletar: (id) => api.delete(`/classificacoes/${id}`),
 }
 
 // APIs de Configurações

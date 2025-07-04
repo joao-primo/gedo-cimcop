@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI } from "../services/api"
+import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI, classificacoesAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -26,6 +26,7 @@ import ImportacaoLote from "./ImportacaoLote"
 export default function RegistroForm() {
   const [tipos, setTipos] = useState([])
   const [obras, setObras] = useState([])
+  const [classificacoes, setClassificacoes] = useState({})
   const [user, setUser] = useState(null)
   const [obraSuspensa, setObraSuspensa] = useState(false)
   const [loading, setLoading] = useState(false)
@@ -39,6 +40,9 @@ export default function RegistroForm() {
     descricao: "",
     anexo: null,
     obra_id: "",
+    classificacao_grupo: "",
+    classificacao_subgrupo: "",
+    classificacao_id: "",
   })
   const [mensagem, setMensagem] = useState({ tipo: "", texto: "" })
 
@@ -50,6 +54,10 @@ export default function RegistroForm() {
     try {
       const tiposRes = await tiposRegistroAPI.listar()
       setTipos(tiposRes.data.tipos_registro || [])
+
+      // NOVO: Carregar classificações
+      const classificacoesRes = await classificacoesAPI.listar()
+      setClassificacoes(classificacoesRes.data.classificacoes || {})
 
       const userRes = await authAPI.me()
       const userData = userRes.data.user
@@ -121,6 +129,7 @@ export default function RegistroForm() {
     if (formData.codigo_numero) data.append("codigo_numero", formData.codigo_numero)
     if (formData.descricao) data.append("descricao", formData.descricao)
     if (formData.obra_id) data.append("obra_id", formData.obra_id)
+    if (formData.classificacao_id) data.append("classificacao_id", formData.classificacao_id)
 
     // Anexo (opcional)
     if (formData.anexo) {
@@ -149,6 +158,9 @@ export default function RegistroForm() {
         descricao: "",
         anexo: null,
         obra_id: user?.role === "administrador" ? "" : user?.obra_id?.toString() || "",
+        classificacao_grupo: "",
+        classificacao_subgrupo: "",
+        classificacao_id: "",
       })
 
       // Reset file input
@@ -328,6 +340,74 @@ export default function RegistroForm() {
                   placeholder="Ex: DOC-001, REG-2024-001"
                   required
                 />
+              </div>
+            </div>
+
+            {/* Classificação */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              {/* Classificação Grupo */}
+              <div className="space-y-2">
+                <Label>Classificação Grupo *</Label>
+                <Select
+                  value={formData.classificacao_grupo}
+                  onValueChange={(value) => handleSelectChange("classificacao_grupo", value)}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o grupo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {Object.keys(classificacoes).map((grupo) => (
+                      <SelectItem key={grupo} value={grupo}>
+                        {grupo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Classificação Subgrupo */}
+              <div className="space-y-2">
+                <Label>Classificação Subgrupo *</Label>
+                <Select
+                  value={formData.classificacao_subgrupo}
+                  onValueChange={(value) => handleSelectChange("classificacao_subgrupo", value)}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione o subgrupo" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formData.classificacao_grupo &&
+                      classificacoes[formData.classificacao_grupo].map((subgrupo) => (
+                        <SelectItem key={subgrupo} value={subgrupo}>
+                          {subgrupo}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              {/* Classificação ID */}
+              <div className="space-y-2">
+                <Label>Classificação ID *</Label>
+                <Select
+                  value={formData.classificacao_id}
+                  onValueChange={(value) => handleSelectChange("classificacao_id", value)}
+                  required
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione a classificação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {formData.classificacao_subgrupo &&
+                      classificacoes[formData.classificacao_grupo][formData.classificacao_subgrupo].map((id) => (
+                        <SelectItem key={id} value={id}>
+                          {id}
+                        </SelectItem>
+                      ))}
+                  </SelectContent>
+                </Select>
               </div>
             </div>
 

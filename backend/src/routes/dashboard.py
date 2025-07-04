@@ -69,6 +69,19 @@ def get_estatisticas(current_user):
         registros_por_tipo = registros_por_tipo.group_by(
             Registro.tipo_registro).all()
 
+        # NOVO: Registros por classificação (grupo)
+        registros_por_classificacao = db.session.query(
+            Registro.classificacao_grupo,
+            func.count(Registro.id).label('count')
+        ).filter(Registro.classificacao_grupo.isnot(None))
+
+        if current_user.role == 'usuario_padrao':
+            registros_por_classificacao = registros_por_classificacao.filter_by(
+                obra_id=current_user.obra_id)
+
+        registros_por_classificacao = registros_por_classificacao.group_by(
+            Registro.classificacao_grupo).all()
+
         # Registros dos últimos 30 dias
         data_limite_30d = datetime.utcnow() - timedelta(days=30)
         registros_ultimos_30d = base_query.filter(
@@ -83,6 +96,13 @@ def get_estatisticas(current_user):
                 func.count(Registro.id).label('count')
             ).outerjoin(Registro).group_by(Obra.id, Obra.nome).all()
 
+        # NOVO: Registros com anexo vs sem anexo
+        registros_com_anexo = base_query.filter(
+            (Registro.blob_url.isnot(None)) | (
+                Registro.caminho_anexo.isnot(None))
+        ).count()
+        registros_sem_anexo = total_registros - registros_com_anexo
+
         return jsonify({
             'total_registros': total_registros,
             'registros_ultimos_30d': registros_ultimos_30d,
@@ -90,10 +110,18 @@ def get_estatisticas(current_user):
                 {'tipo': tipo, 'count': count}
                 for tipo, count in registros_por_tipo
             ],
+            'registros_por_classificacao': [
+                {'grupo': grupo, 'count': count}
+                for grupo, count in registros_por_classificacao
+            ],
             'registros_por_obra': [
                 {'obra_nome': nome, 'obra_id': obra_id, 'count': count}
                 for nome, obra_id, count in registros_por_obra
-            ]
+            ],
+            'registros_anexos': {
+                'com_anexo': registros_com_anexo,
+                'sem_anexo': registros_sem_anexo
+            }
         }), 200
 
     except Exception as e:

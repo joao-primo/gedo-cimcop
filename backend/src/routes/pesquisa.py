@@ -9,6 +9,8 @@ from datetime import datetime
 import os
 import requests
 import mimetypes
+import pandas as pd
+from io import BytesIO
 
 pesquisa_bp = Blueprint('pesquisa', __name__)
 
@@ -29,6 +31,8 @@ def pesquisa_avancada(current_user):
         data_fim = request.args.get('data_fim')
         data_registro_inicio = request.args.get('data_registro_inicio')
         data_registro_fim = request.args.get('data_registro_fim')
+        classificacao_grupo = request.args.get(
+            'classificacao_grupo', '').strip()
 
         # Parâmetros de paginação
         page = request.args.get('page', 1, type=int)
@@ -58,6 +62,10 @@ def pesquisa_avancada(current_user):
 
         if tipo_registro_id:
             query = query.filter_by(tipo_registro_id=tipo_registro_id)
+
+        # NOVO: Filtro por classificação
+        if classificacao_grupo:
+            query = query.filter_by(classificacao_grupo=classificacao_grupo)
 
         # Filtro por código/número
         if codigo_numero:
@@ -153,6 +161,7 @@ def pesquisa_avancada(current_user):
                 'data_fim': data_fim,
                 'data_registro_inicio': data_registro_inicio,
                 'data_registro_fim': data_registro_fim,
+                'classificacao_grupo': classificacao_grupo,
                 'ordenacao': ordenacao
             }
         }), 200
@@ -186,6 +195,10 @@ def get_filtros_disponiveis(current_user):
         tipos_registro_existentes = [tipo[0]
                                      for tipo in query.all() if tipo[0]]
 
+        # NOVO: Grupos de classificação disponíveis
+        from models.classificacao import Classificacao
+        grupos_classificacao = Classificacao.get_grupos()
+
         # Autores (usuários que criaram registros)
         from models.user import User
         autores_query = db.session.query(User.id, User.username, User.email)\
@@ -214,6 +227,7 @@ def get_filtros_disponiveis(current_user):
             'obras': [obra.to_dict() for obra in obras],
             'tipos_registro': [tipo.to_dict() for tipo in tipos_registro],
             'tipos_registro_existentes': tipos_registro_existentes,
+            'grupos_classificacao': grupos_classificacao,
             'autores': [
                 {'id': autor_id, 'username': username, 'email': email}
                 for autor_id, username, email in autores
@@ -247,18 +261,142 @@ def get_filtros_disponiveis(current_user):
 @obra_access_required
 def exportar_resultados(current_user):
     try:
-        # Receber os mesmos filtros da pesquisa
         data = request.get_json()
 
-        # Aplicar os mesmos filtros da pesquisa avançada
-        # (código similar ao endpoint de pesquisa, mas sem paginação)
+        # Aplicar os mesmos filtros da pesquisa avançada (sem paginação)
+        query = Registro.query
 
-        # Por enquanto, retornar apenas uma mensagem de sucesso
-        # A implementação completa incluiria geração de CSV/Excel
+        # Aplicar filtros de acesso baseado no usuário
+        if current_user.role == 'usuario_padrao':
+            query = query.filter_by(obra_id=current_user.obra_id)
+        elif data.get('obra_id'):
+            query = query.filter_by(obra_id=data['obra_id'])
+
+        # Aplicar filtros recebidos
+        if data.get('palavra_chave'):
+            query = query.filter(
+                or_(
+                    Registro.titulo.ilike(f'%{data["palavra_chave"]}%'),
+                    Registro.descricao.ilike(f'%{data["palavra_chave"]}%')
+                )
+            )
+
+        if data.get('tipo_registro_id'):
+            query = query.filter_by(tipo_registro_id=data['tipo_registro_id'])
+
+        if data.get('classificacao_grupo'):
+            query = query.filter_by(
+                classificacao_grupo=data['classificacao_grupo'])
+
+        if data.get('codigo_numero'):
+            query = query.filter(
+                Registro.codigo_numero.ilike(f'%{data["codigo_numero"]}%'))
+
+        if data.get('data_registro_inicio'):
+            data_inicio_dt = datetime.strptime(
+                data['data_registro_inicio'], '%Y-%m-%d')
+            query = query.filter(Registro.data_registro >= data_inicio_dt)
+
+        if data.get('data_registro_fim'):
+            data_fim_dt = datetime.strptime(
+                data['data_registro_fim'], '%Y-%m-%d')
+            data_fim_dt = data_fim_dt.replace(hour=23, minute=59, second=59)
+            query = query.filter(Registro.data_registro <= data_fim_dt)
+
+        # Ordenação
+        ordenacao = data.get('ordenacao', 'data_desc')
+        if ordenacao == 'data_asc':
+            query = query.order_by(Registro.created_at.asc())
+        elif ordenacao == 'titulo_asc':
+            query = query.order_by(Registro.titulo.asc())
+        elif ordenacao == 'titulo_desc':
+            query = query.order_by(Registro.titulo.desc())
+        elif ordenacao == 'data_registro_asc':
+            query = query.order_by(Registro.data_registro.asc())
+        elif ordenacao == 'data_registro_desc':
+            query = query.order_by(Registro.data_registro.desc())
+        else:
+            query = query.order_by(Registro.created_at.desc())
+
+        # Buscar todos os registros
+        registros = query.all()
+
+        if not registros:
+            return jsonify({'message': 'Nenhum registro encontrado para exportar'}), 404
+
+        # Preparar dados para Excel
+        dados_excel = []
+        for registro in registros:
+            dados_excel.append({
+                'ID': registro.id,
+                'Título': registro.titulo,
+                'Tipo de Registro': registro.tipo_registro,
+                'Classificação Grupo': registro.classificacao_grupo or '',
+                'Classificação Subgrupo': registro.classificacao_subgrupo or '',
+                'Data do Registro': registro.data_registro.strftime('%Y-%m-%d') if registro.data_registro else '',
+                'Código/Número': registro.codigo_numero or '',
+                'Descrição': registro.descricao,
+                'Autor': registro.autor.username if registro.autor else '',
+                'Obra': registro.obra.nome if registro.obra else '',
+                'Código da Obra': registro.obra.codigo if registro.obra else '',
+                'Tem Anexo': 'Sim' if (registro.blob_url or registro.caminho_anexo) else 'Não',
+                'Nome do Arquivo': registro.nome_arquivo_original or '',
+                'Data de Criação': registro.created_at.strftime('%Y-%m-%d %H:%M:%S') if registro.created_at else '',
+                'Última Atualização': registro.updated_at.strftime('%Y-%m-%d %H:%M:%S') if registro.updated_at else ''
+            })
+
+        # Criar arquivo Excel
+        output = BytesIO()
+        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+            df = pd.DataFrame(dados_excel)
+            df.to_excel(writer, sheet_name='Registros', index=False)
+
+            # Ajustar largura das colunas
+            worksheet = writer.sheets['Registros']
+            for column in worksheet.columns:
+                max_length = 0
+                column_letter = column[0].column_letter
+                for cell in column:
+                    try:
+                        if len(str(cell.value)) > max_length:
+                            max_length = len(str(cell.value))
+                    except:
+                        pass
+                adjusted_width = min(max_length + 2, 50)
+                worksheet.column_dimensions[column_letter].width = adjusted_width
+
+        output.seek(0)
+
+        # Nome do arquivo
+        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+        filename = f'registros_exportacao_{timestamp}.xlsx'
+
+        return send_file(
+            BytesIO(output.read()),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=filename
+        )
+
+    except Exception as e:
+        return jsonify({'message': f'Erro ao exportar: {str(e)}'}), 500
+
+
+@pesquisa_bp.route('/<int:registro_id>/visualizar', methods=['GET'])
+@token_required
+@obra_access_required
+def visualizar_registro(current_user, registro_id):
+    try:
+        registro = Registro.query.get(registro_id)
+        if not registro:
+            return jsonify({'message': 'Registro não encontrado'}), 404
+
+        # Verificar permissões
+        if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
+            return jsonify({'message': 'Acesso negado a este registro'}), 403
 
         return jsonify({
-            'message': 'Funcionalidade de exportação será implementada em versão futura',
-            'filtros_recebidos': data
+            'registro': registro.to_dict()
         }), 200
 
     except Exception as e:

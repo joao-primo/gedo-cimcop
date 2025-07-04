@@ -1,140 +1,290 @@
 "use client"
+import { Link, useLocation, useNavigate } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
-import { Button } from "@/components/ui/button"
+import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
+import {
+  Sidebar,
+  SidebarContent,
+  SidebarFooter,
+  SidebarGroup,
+  SidebarGroupContent,
+  SidebarGroupLabel,
+  SidebarHeader,
+  SidebarInset,
+  SidebarMenu,
+  SidebarMenuButton,
+  SidebarMenuItem,
+  SidebarProvider,
+  SidebarRail,
+  SidebarTrigger,
+} from "@/components/ui/sidebar"
+import {
   Building2,
-  LogOut,
-  Home,
+  ChevronUp,
+  Cog,
   FileText,
+  GitBranch,
+  Home,
+  LogOut,
+  Plus,
   Search,
+  Upload,
   Users,
-  Settings,
-  PlusCircle,
-  Menu,
-  X,
-  WorkflowIcon,
+  Key,
+  FileBarChart,
 } from "lucide-react"
-import { Link, useLocation } from "react-router-dom"
-import { useState } from "react"
 
 const Layout = ({ children }) => {
   const { user, logout, isAdmin } = useAuth()
   const location = useLocation()
-  const [sidebarOpen, setSidebarOpen] = useState(false)
+  const navigate = useNavigate()
 
-  const navigation = [
-    { name: "Dashboard", href: "/dashboard", icon: Home },
-    { name: "Registros", href: "/registros", icon: FileText },
-    { name: "Pesquisa", href: "/pesquisa", icon: Search },
-    { name: "Configurações", href: "/configuracoes", icon: Settings },
-    ...(isAdmin()
-      ? [
-          { name: "Obras", href: "/obras", icon: Building2 },
-          { name: "Usuários", href: "/usuarios", icon: Users },
-          { name: "Workflow", href: "/workflow", icon: WorkflowIcon },
-        ]
-      : []),
+  const handleLogout = () => {
+    logout()
+    navigate("/login")
+  }
+
+  // Definir itens do menu baseado no papel do usuário
+  const menuItems = [
+    {
+      title: "Dashboard",
+      url: "/dashboard",
+      icon: Home,
+      description: "Visão geral do sistema",
+    },
+    {
+      title: "Novo Registro",
+      url: "/novo-registro",
+      icon: Plus,
+      description: "Criar novo registro",
+    },
+    {
+      title: "Pesquisa",
+      url: "/pesquisa",
+      icon: Search,
+      description: "Buscar registros",
+    },
+    {
+      title: "Importação",
+      url: "/importacao",
+      icon: Upload,
+      description: "Importar registros em lote",
+    },
+    {
+      title: "Relatórios",
+      url: "/relatorios",
+      icon: FileBarChart,
+      description: "Análises e relatórios",
+    },
   ]
 
-  const isActive = (href) => location.pathname === href
+  // Itens administrativos (apenas para admin)
+  const adminItems = [
+    {
+      title: "Usuários",
+      url: "/usuarios",
+      icon: Users,
+      description: "Gerenciar usuários",
+    },
+    {
+      title: "Obras",
+      url: "/obras",
+      icon: Building2,
+      description: "Gerenciar obras",
+    },
+    {
+      title: "Configurações",
+      url: "/configuracoes",
+      icon: Cog,
+      description: "Configurações do sistema",
+    },
+    {
+      title: "Workflow",
+      url: "/workflow",
+      icon: GitBranch,
+      description: "Configurar notificações",
+    },
+  ]
+
+  const isActiveRoute = (path) => {
+    return location.pathname === path
+  }
+
+  const getUserInitials = (username) => {
+    if (!username) return "U"
+    return username
+      .split(" ")
+      .map((name) => name[0])
+      .join("")
+      .toUpperCase()
+      .slice(0, 2)
+  }
+
+  const getRoleLabel = (role) => {
+    switch (role) {
+      case "administrador":
+        return "Administrador"
+      case "usuario_padrao":
+        return "Usuário"
+      default:
+        return "Usuário"
+    }
+  }
+
+  const getRoleBadgeVariant = (role) => {
+    switch (role) {
+      case "administrador":
+        return "default"
+      case "usuario_padrao":
+        return "secondary"
+      default:
+        return "outline"
+    }
+  }
 
   return (
-    <div className="min-h-screen bg-gray-50">
-      {/* Header */}
-      <header className="bg-white shadow-sm border-b sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
-          <div className="flex justify-between items-center h-16">
-            <div className="flex items-center">
-              <Button variant="ghost" size="sm" className="lg:hidden mr-2" onClick={() => setSidebarOpen(!sidebarOpen)}>
-                {sidebarOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
-              </Button>
-
-              <div className="flex-shrink-0 flex items-center">
-                <Building2 className="h-8 w-8 text-blue-600" />
-                <span className="ml-2 text-xl font-bold text-gray-900">GEDO CIMCOP</span>
-              </div>
-            </div>
-
-            <div className="flex items-center space-x-4">
-              <div className="hidden sm:flex items-center space-x-3">
-                <span className="text-sm text-gray-700">
-                  Olá, <span className="font-medium">{user?.username}</span>
-                </span>
-                <Badge variant={user?.role === "administrador" ? "default" : "secondary"}>
-                  {user?.role === "administrador" ? "Admin" : "Usuário"}
-                </Badge>
-              </div>
-              <Button variant="ghost" size="sm" onClick={logout} className="text-gray-500 hover:text-gray-700">
-                <LogOut className="h-4 w-4" />
-                <span className="hidden sm:ml-2 sm:inline">Sair</span>
-              </Button>
-            </div>
-          </div>
-        </div>
-      </header>
-
-      <div className="flex">
-        {/* Sidebar */}
-        <nav
-          className={`
-          ${sidebarOpen ? "translate-x-0" : "-translate-x-full"}
-          lg:translate-x-0 transition-transform duration-200 ease-in-out
-          fixed lg:static inset-y-0 left-0 z-30
-          w-64 bg-white shadow-sm min-h-screen border-r
-        `}
-        >
-          <div className="p-4">
-            <div className="space-y-1">
-              {navigation.map((item) => {
-                const Icon = item.icon
-                return (
-                  <Link
-                    key={item.name}
-                    to={item.href}
-                    onClick={() => setSidebarOpen(false)}
-                    className={`
-                      flex items-center px-3 py-2 text-sm font-medium rounded-md transition-colors
-                      ${
-                        isActive(item.href)
-                          ? "bg-blue-100 text-blue-700"
-                          : "text-gray-600 hover:bg-gray-50 hover:text-gray-900"
-                      }
-                    `}
-                  >
-                    <Icon className="mr-3 h-5 w-5" />
-                    {item.name}
-                  </Link>
-                )
-              })}
-            </div>
-
-            {/* Quick Actions */}
-            <div className="mt-8">
-              <h3 className="px-3 text-xs font-semibold text-gray-500 uppercase tracking-wider">Ações Rápidas</h3>
-              <div className="mt-2 space-y-1">
-                <Link
-                  to="/registros/novo"
-                  onClick={() => setSidebarOpen(false)}
-                  className="flex items-center px-3 py-2 text-sm font-medium text-gray-600 rounded-md hover:bg-gray-50 hover:text-gray-900 transition-colors"
-                >
-                  <PlusCircle className="mr-3 h-5 w-5" />
-                  Novo Registro
+    <SidebarProvider>
+      <Sidebar variant="inset">
+        <SidebarHeader>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton size="lg" asChild>
+                <Link to="/dashboard">
+                  <div className="flex aspect-square size-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
+                    <FileText className="size-4" />
+                  </div>
+                  <div className="grid flex-1 text-left text-sm leading-tight">
+                    <span className="truncate font-semibold">Sistema HCB</span>
+                    <span className="truncate text-xs">Gestão de Registros</span>
+                  </div>
                 </Link>
-              </div>
-            </div>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarHeader>
+
+        <SidebarContent>
+          {/* Menu Principal */}
+          <SidebarGroup>
+            <SidebarGroupLabel>Menu Principal</SidebarGroupLabel>
+            <SidebarGroupContent>
+              <SidebarMenu>
+                {menuItems.map((item) => (
+                  <SidebarMenuItem key={item.title}>
+                    <SidebarMenuButton asChild isActive={isActiveRoute(item.url)} tooltip={item.description}>
+                      <Link to={item.url}>
+                        <item.icon />
+                        <span>{item.title}</span>
+                      </Link>
+                    </SidebarMenuButton>
+                  </SidebarMenuItem>
+                ))}
+              </SidebarMenu>
+            </SidebarGroupContent>
+          </SidebarGroup>
+
+          {/* Menu Administrativo (apenas para admin) */}
+          {isAdmin() && (
+            <SidebarGroup>
+              <SidebarGroupLabel>Administração</SidebarGroupLabel>
+              <SidebarGroupContent>
+                <SidebarMenu>
+                  {adminItems.map((item) => (
+                    <SidebarMenuItem key={item.title}>
+                      <SidebarMenuButton asChild isActive={isActiveRoute(item.url)} tooltip={item.description}>
+                        <Link to={item.url}>
+                          <item.icon />
+                          <span>{item.title}</span>
+                        </Link>
+                      </SidebarMenuButton>
+                    </SidebarMenuItem>
+                  ))}
+                </SidebarMenu>
+              </SidebarGroupContent>
+            </SidebarGroup>
+          )}
+        </SidebarContent>
+
+        <SidebarFooter>
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <SidebarMenuButton
+                    size="lg"
+                    className="data-[state=open]:bg-sidebar-accent data-[state=open]:text-sidebar-accent-foreground"
+                  >
+                    <Avatar className="h-8 w-8 rounded-lg">
+                      <AvatarFallback className="rounded-lg">{getUserInitials(user?.username)}</AvatarFallback>
+                    </Avatar>
+                    <div className="grid flex-1 text-left text-sm leading-tight">
+                      <span className="truncate font-semibold">{user?.username}</span>
+                      <span className="truncate text-xs">{getRoleLabel(user?.role)}</span>
+                    </div>
+                    <ChevronUp className="ml-auto size-4" />
+                  </SidebarMenuButton>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  className="w-[--radix-dropdown-menu-trigger-width] min-w-56 rounded-lg"
+                  side="bottom"
+                  align="end"
+                  sideOffset={4}
+                >
+                  <DropdownMenuLabel className="p-0 font-normal">
+                    <div className="flex items-center gap-2 px-1 py-1.5 text-left text-sm">
+                      <Avatar className="h-8 w-8 rounded-lg">
+                        <AvatarFallback className="rounded-lg">{getUserInitials(user?.username)}</AvatarFallback>
+                      </Avatar>
+                      <div className="grid flex-1 text-left text-sm leading-tight">
+                        <span className="truncate font-semibold">{user?.username}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="truncate text-xs">{user?.email}</span>
+                          <Badge variant={getRoleBadgeVariant(user?.role)} className="text-xs">
+                            {getRoleLabel(user?.role)}
+                          </Badge>
+                        </div>
+                      </div>
+                    </div>
+                  </DropdownMenuLabel>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem asChild>
+                    <Link to="/trocar-senha" className="cursor-pointer">
+                      <Key className="mr-2 h-4 w-4" />
+                      Trocar Senha
+                    </Link>
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem onClick={handleLogout} className="cursor-pointer text-red-600">
+                    <LogOut className="mr-2 h-4 w-4" />
+                    Sair
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </SidebarFooter>
+        <SidebarRail />
+      </Sidebar>
+
+      <SidebarInset>
+        <header className="flex h-16 shrink-0 items-center gap-2 transition-[width,height] ease-linear group-has-[[data-collapsible=icon]]/sidebar-wrapper:h-12">
+          <div className="flex items-center gap-2 px-4">
+            <SidebarTrigger className="-ml-1" />
+            {/* Breadcrumb ou título da página atual pode ser adicionado aqui */}
           </div>
-        </nav>
-
-        {/* Overlay for mobile */}
-        {sidebarOpen && (
-          <div className="fixed inset-0 bg-black bg-opacity-50 z-20 lg:hidden" onClick={() => setSidebarOpen(false)} />
-        )}
-
-        {/* Main Content */}
-        <main className="flex-1 p-6 lg:ml-0">{children}</main>
-      </div>
-    </div>
+        </header>
+        <div className="flex flex-1 flex-col gap-4 p-4 pt-0">{children}</div>
+      </SidebarInset>
+    </SidebarProvider>
   )
 }
 
