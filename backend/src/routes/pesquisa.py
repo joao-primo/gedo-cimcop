@@ -4,434 +4,353 @@ from models.obra import Obra
 from models.tipo_registro import TipoRegistro
 from routes.auth import token_required, obra_access_required
 from services.blob_service import blob_service
-from sqlalchemy import or_, and_, func, text
+from sqlalchemy import or_, and_, func, text, desc
 from datetime import datetime
 import os
 import requests
 import mimetypes
 import pandas as pd
 from io import BytesIO
+from flask_jwt_extended import jwt_required, get_jwt_identity
+from ..utils.security import audit_log
+import logging
 
 pesquisa_bp = Blueprint('pesquisa', __name__)
+logger = logging.getLogger(__name__)
 
 
 @pesquisa_bp.route('/', methods=['GET'])
-@token_required
-@obra_access_required
-def pesquisa_avancada(current_user):
+@jwt_required()
+def pesquisar_registros():
     try:
-        # Parâmetros de busca
+        current_user_id = get_jwt_identity()
+
+        # Parâmetros de pesquisa
         palavra_chave = request.args.get('palavra_chave', '').strip()
         obra_id = request.args.get('obra_id', type=int)
-        tipo_registro = request.args.get('tipo_registro', '').strip()
         tipo_registro_id = request.args.get('tipo_registro_id', type=int)
-        codigo_numero = request.args.get('codigo_numero', '').strip()
-        autor_id = request.args.get('autor_id', type=int)
-        data_inicio = request.args.get('data_inicio')
-        data_fim = request.args.get('data_fim')
         data_registro_inicio = request.args.get('data_registro_inicio')
         data_registro_fim = request.args.get('data_registro_fim')
-
-        # Classificação (com verificação se coluna existe)
         classificacao_grupo = request.args.get(
             'classificacao_grupo', '').strip()
+        classificacao_subgrupo = request.args.get(
+            'classificacao_subgrupo', '').strip()
 
         # Parâmetros de paginação
         page = request.args.get('page', 1, type=int)
-        per_page = request.args.get('per_page', 20, type=int)
+        per_page = min(request.args.get('per_page', 20, type=int), 100)
 
-        # Query base
-        query = Registro.query
+        try:
+            # Query base defensiva
+            query = db.session.query(Registro)
 
-        # Aplicar filtros de acesso baseado no usuário
-        if current_user.role == 'usuario_padrao':
-            query = query.filter_by(obra_id=current_user.obra_id)
-        elif obra_id and obra_id != 0:
-            query = query.filter_by(obra_id=obra_id)
-
-        # Filtro por palavra-chave (busca em título e descrição)
-        if palavra_chave:
-            query = query.filter(
-                or_(
-                    Registro.titulo.ilike(f'%{palavra_chave}%'),
-                    Registro.descricao.ilike(f'%{palavra_chave}%')
+            # Filtros
+            if palavra_chave:
+                query = query.filter(
+                    or_(
+                        Registro.descricao.ilike(f'%{palavra_chave}%'),
+                        Registro.observacoes.ilike(f'%{palavra_chave}%')
+                    )
                 )
-            )
 
-        # Filtro por tipo de registro
-        if tipo_registro:
-            query = query.filter_by(tipo_registro=tipo_registro)
+            if obra_id and obra_id != 0:
+                query = query.filter(Registro.obra_id == obra_id)
 
-        if tipo_registro_id and tipo_registro_id != 0:
-            query = query.filter_by(tipo_registro_id=tipo_registro_id)
+            if tipo_registro_id and tipo_registro_id != 0:
+                query = query.filter(
+                    Registro.tipo_registro_id == tipo_registro_id)
 
-        # Filtro por classificação (com verificação se coluna existe)
-        if classificacao_grupo:
+            # Filtros de data
+            if data_registro_inicio:
+                try:
+                    data_inicio = datetime.strptime(
+                        data_registro_inicio, '%Y-%m-%d').date()
+                    query = query.filter(
+                        func.date(Registro.data_registro) >= data_inicio)
+                except ValueError:
+                    pass
+
+            if data_registro_fim:
+                try:
+                    data_fim = datetime.strptime(
+                        data_registro_fim, '%Y-%m-%d').date()
+                    query = query.filter(
+                        func.date(Registro.data_registro) <= data_fim)
+                except ValueError:
+                    pass
+
+            # Filtros de classificação (verificar se colunas existem)
             try:
-                # Verificar se a coluna existe
-                db.session.execute(
-                    text("SELECT classificacao_grupo FROM registros LIMIT 1"))
-                query = query.filter_by(
-                    classificacao_grupo=classificacao_grupo)
+                if classificacao_grupo:
+                    query = query.filter(
+                        Registro.classificacao_grupo == classificacao_grupo)
+
+                if classificacao_subgrupo:
+                    query = query.filter(
+                        Registro.classificacao_subgrupo == classificacao_subgrupo)
             except Exception as e:
-                print(f"Coluna classificacao_grupo não existe: {str(e)}")
+                logger.warning(
+                    f"Colunas de classificação não encontradas: {str(e)}")
 
-        # Filtro por código/número
-        if codigo_numero:
-            query = query.filter(
-                Registro.codigo_numero.ilike(f'%{codigo_numero}%'))
+            # Ordenação
+            query = query.order_by(desc(Registro.data_registro))
 
-        # Filtro por autor
-        if autor_id:
-            query = query.filter_by(autor_id=autor_id)
+            # Paginação
+            total = query.count()
+            registros = query.offset(
+                (page - 1) * per_page).limit(per_page).all()
 
-        # Filtros por data de criação
-        if data_inicio:
-            try:
-                data_inicio_dt = datetime.strptime(data_inicio, '%Y-%m-%d')
-                query = query.filter(Registro.created_at >= data_inicio_dt)
-            except ValueError:
-                return jsonify({'message': 'Formato de data_inicio inválido (use YYYY-MM-DD)'}), 400
+            # Converter para dicionário
+            registros_data = []
+            for registro in registros:
+                registro_dict = {
+                    'id': registro.id,
+                    'obra_id': registro.obra_id,
+                    'tipo_registro_id': registro.tipo_registro_id,
+                    'descricao': registro.descricao,
+                    'observacoes': registro.observacoes,
+                    'data_registro': registro.data_registro.isoformat() if registro.data_registro else None,
+                    'anexos_count': 0  # Default
+                }
 
-        if data_fim:
-            try:
-                data_fim_dt = datetime.strptime(data_fim, '%Y-%m-%d')
-                # Adicionar 1 dia para incluir todo o dia final
-                data_fim_dt = data_fim_dt.replace(
-                    hour=23, minute=59, second=59)
-                query = query.filter(Registro.created_at <= data_fim_dt)
-            except ValueError:
-                return jsonify({'message': 'Formato de data_fim inválido (use YYYY-MM-DD)'}), 400
+                # Adicionar campos de classificação se existirem
+                try:
+                    if hasattr(registro, 'classificacao_grupo'):
+                        registro_dict['classificacao_grupo'] = registro.classificacao_grupo
+                    if hasattr(registro, 'classificacao_subgrupo'):
+                        registro_dict['classificacao_subgrupo'] = registro.classificacao_subgrupo
+                    if hasattr(registro, 'anexos_count'):
+                        registro_dict['anexos_count'] = registro.anexos_count or 0
+                except Exception:
+                    pass
 
-        # Filtros por data do registro
-        if data_registro_inicio:
-            try:
-                data_registro_inicio_dt = datetime.strptime(
-                    data_registro_inicio, '%Y-%m-%d')
-                data_registro_fim_dt = data_registro_inicio_dt.replace(
-                    hour=23, minute=59, second=59)
-                query = query.filter(
-                    Registro.data_registro >= data_registro_inicio_dt,
-                    Registro.data_registro <= data_registro_fim_dt)
-            except ValueError:
-                return jsonify({'message': 'Formato de data_registro_inicio inválido (use YYYY-MM-DD)'}), 400
+                registros_data.append(registro_dict)
 
-        if data_registro_fim:
-            try:
-                data_registro_fim_dt = datetime.strptime(
-                    data_registro_fim, '%Y-%m-%d')
-                data_registro_fim_dt = data_registro_fim_dt.replace(
-                    hour=23, minute=59, second=59)
-                query = query.filter(
-                    Registro.data_registro <= data_registro_fim_dt)
-            except ValueError:
-                return jsonify({'message': 'Formato de data_registro_fim inválido (use YYYY-MM-DD)'}), 400
+            # Calcular páginas
+            pages = (total + per_page - 1) // per_page
 
-        # Ordenação
-        ordenacao = request.args.get('ordenacao', 'data_desc')
-        if ordenacao == 'data_asc':
-            query = query.order_by(Registro.created_at.asc())
-        elif ordenacao == 'data_desc':
-            query = query.order_by(Registro.created_at.desc())
-        elif ordenacao == 'titulo_asc':
-            query = query.order_by(Registro.titulo.asc())
-        elif ordenacao == 'titulo_desc':
-            query = query.order_by(Registro.titulo.desc())
-        elif ordenacao == 'data_registro_asc':
-            query = query.order_by(Registro.data_registro.asc())
-        elif ordenacao == 'data_registro_desc':
-            query = query.order_by(Registro.data_registro.desc())
-        else:
-            query = query.order_by(Registro.created_at.desc())
-
-        # Paginação
-        registros_paginados = query.paginate(
-            page=page, per_page=per_page, error_out=False
-        )
-
-        # Preparar dados dos registros com informações adicionais
-        registros_data = []
-        for registro in registros_paginados.items:
-            registro_dict = registro.to_dict()
-
-            # Adicionar informações de classificação se existirem
-            try:
-                if hasattr(registro, 'classificacao_grupo'):
-                    registro_dict['classificacao_grupo'] = registro.classificacao_grupo
-                if hasattr(registro, 'classificacao_subgrupo'):
-                    registro_dict['classificacao_subgrupo'] = registro.classificacao_subgrupo
-            except:
-                pass
-
-            # Adicionar informação se tem anexo
-            registro_dict['anexo_url'] = bool(
-                registro.blob_url or registro.caminho_anexo)
-
-            registros_data.append(registro_dict)
-
-        return jsonify({
-            'registros': registros_data,
-            'pagination': {
+            resultado = {
+                'registros': registros_data,
+                'total': total,
                 'page': page,
                 'per_page': per_page,
-                'total': registros_paginados.total,
-                'pages': registros_paginados.pages,
-                'has_next': registros_paginados.has_next,
-                'has_prev': registros_paginados.has_prev
-            },
-            'filtros_aplicados': {
-                'palavra_chave': palavra_chave,
-                'obra_id': obra_id,
-                'tipo_registro': tipo_registro,
-                'tipo_registro_id': tipo_registro_id,
-                'codigo_numero': codigo_numero,
-                'autor_id': autor_id,
-                'data_inicio': data_inicio,
-                'data_fim': data_fim,
-                'data_registro_inicio': data_registro_inicio,
-                'data_registro_fim': data_registro_fim,
-                'classificacao_grupo': classificacao_grupo,
-                'ordenacao': ordenacao
+                'pages': pages
             }
-        }), 200
+
+            audit_log(current_user_id, 'SEARCH_RECORDS', details={
+                'filters': {
+                    'palavra_chave': palavra_chave,
+                    'obra_id': obra_id,
+                    'tipo_registro_id': tipo_registro_id,
+                    'data_inicio': data_registro_inicio,
+                    'data_fim': data_registro_fim,
+                    'classificacao_grupo': classificacao_grupo,
+                    'classificacao_subgrupo': classificacao_subgrupo
+                },
+                'results': total
+            })
+
+            return jsonify(resultado)
+
+        except Exception as e:
+            logger.error(f"Erro na query de pesquisa: {str(e)}")
+            return jsonify({
+                'registros': [],
+                'total': 0,
+                'page': 1,
+                'per_page': per_page,
+                'pages': 0
+            })
 
     except Exception as e:
-        print(f"Erro na pesquisa: {str(e)}")
-        return jsonify({'message': f'Erro interno: {str(e)}'}), 500
+        logger.error(f"Erro geral na pesquisa: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
 
 @pesquisa_bp.route('/filtros', methods=['GET'])
-@token_required
-@obra_access_required
-def get_filtros_disponiveis(current_user):
+@jwt_required()
+def get_filtros():
     try:
-        # Obras disponíveis
-        obras = []
-        if current_user.role == 'administrador':
-            obras = Obra.query.all()
-        else:
-            obra = Obra.query.get(current_user.obra_id)
-            if obra:
-                obras = [obra]
+        current_user_id = get_jwt_identity()
 
-        # Tipos de registro disponíveis
-        tipos_registro = TipoRegistro.query.filter_by(ativo=True).all()
+        # Buscar obras
+        obras = db.session.query(Obra).filter(Obra.ativo == True).all()
+        obras_data = [{'id': obra.id, 'nome': obra.nome} for obra in obras]
 
-        # Tipos de registro únicos nos registros existentes
-        query = db.session.query(Registro.tipo_registro).distinct()
-        if current_user.role == 'usuario_padrao':
-            query = query.filter_by(obra_id=current_user.obra_id)
+        # Buscar tipos de registro
+        tipos = db.session.query(TipoRegistro).filter(
+            TipoRegistro.ativo == True).all()
+        tipos_data = [{'id': tipo.id, 'nome': tipo.nome} for tipo in tipos]
 
-        tipos_registro_existentes = [tipo[0]
-                                     for tipo in query.all() if tipo[0]]
-
-        # Grupos de classificação disponíveis (com verificação se coluna existe)
-        grupos_classificacao = []
+        # Buscar classificações (se existirem)
+        classificacoes_data = []
         try:
-            from models.classificacao import Classificacao
-            grupos_classificacao = Classificacao.get_grupos()
-        except Exception as e:
-            print(f"Erro ao carregar classificações: {str(e)}")
-            grupos_classificacao = []
-
-        # Autores (usuários que criaram registros)
-        from models.user import User
-        autores_query = db.session.query(User.id, User.username, User.email)\
-            .join(Registro, User.id == Registro.autor_id).distinct()
-
-        if current_user.role == 'usuario_padrao':
-            autores_query = autores_query.filter(
-                Registro.obra_id == current_user.obra_id)
-
-        autores = autores_query.all()
-
-        # Faixas de data disponíveis
-        data_query = db.session.query(
-            func.min(Registro.created_at).label('data_min'),
-            func.max(Registro.created_at).label('data_max'),
-            func.min(Registro.data_registro).label('data_registro_min'),
-            func.max(Registro.data_registro).label('data_registro_max')
-        )
-
-        if current_user.role == 'usuario_padrao':
-            data_query = data_query.filter_by(obra_id=current_user.obra_id)
-
-        datas = data_query.first()
-
-        return jsonify({
-            'obras': [obra.to_dict() for obra in obras],
-            'tipos_registro': [tipo.to_dict() for tipo in tipos_registro],
-            'tipos_registro_existentes': tipos_registro_existentes,
-            'grupos_classificacao': grupos_classificacao,
-            'autores': [
-                {'id': autor_id, 'username': username, 'email': email}
-                for autor_id, username, email in autores
-            ],
-            'faixas_data': {
-                'criacao_min': datas.data_min.isoformat() if datas.data_min else None,
-                'criacao_max': datas.data_max.isoformat() if datas.data_max else None,
-                'registro_min': datas.data_registro_min.isoformat() if datas.data_registro_min else None,
-                'registro_max': datas.data_registro_max.isoformat() if datas.data_registro_max else None
-            },
-            'opcoes_ordenacao': [
-                {'value': 'data_desc',
-                    'label': 'Data de Criação (Mais Recente)'},
-                {'value': 'data_asc',
-                    'label': 'Data de Criação (Mais Antiga)'},
-                {'value': 'data_registro_desc',
-                    'label': 'Data do Registro (Mais Recente)'},
-                {'value': 'data_registro_asc',
-                    'label': 'Data do Registro (Mais Antiga)'},
-                {'value': 'titulo_asc', 'label': 'Título (A-Z)'},
-                {'value': 'titulo_desc', 'label': 'Título (Z-A)'}
+            # Verificar se existe tabela de classificações
+            from ..models.classificacao import Classificacao
+            classificacoes = db.session.query(Classificacao).all()
+            classificacoes_data = [
+                {
+                    'id': c.id,
+                    'grupo': c.grupo,
+                    'subgrupo': c.subgrupo
+                } for c in classificacoes
             ]
-        }), 200
+        except Exception as e:
+            logger.warning(
+                f"Tabela de classificações não encontrada: {str(e)}")
+
+        filtros = {
+            'obras': obras_data,
+            'tipos_registro': tipos_data,
+            'classificacoes': classificacoes_data
+        }
+
+        audit_log(current_user_id, 'SEARCH_FILTERS_VIEW')
+        return jsonify(filtros)
 
     except Exception as e:
-        print(f"Erro ao carregar filtros: {str(e)}")
-        return jsonify({'message': f'Erro interno: {str(e)}'}), 500
+        logger.error(f"Erro ao buscar filtros: {str(e)}")
+        return jsonify({
+            'obras': [],
+            'tipos_registro': [],
+            'classificacoes': []
+        })
 
 
-@pesquisa_bp.route('/exportar', methods=['POST'])
-@token_required
-@obra_access_required
-def exportar_resultados(current_user):
+@pesquisa_bp.route('/exportar', methods=['GET'])
+@jwt_required()
+def exportar_resultados():
     try:
-        data = request.get_json()
+        current_user_id = get_jwt_identity()
 
-        # Aplicar os mesmos filtros da pesquisa avançada (sem paginação)
-        query = Registro.query
+        # Mesma lógica de filtros da pesquisa
+        palavra_chave = request.args.get('palavra_chave', '').strip()
+        obra_id = request.args.get('obra_id', type=int)
+        tipo_registro_id = request.args.get('tipo_registro_id', type=int)
+        data_registro_inicio = request.args.get('data_registro_inicio')
+        data_registro_fim = request.args.get('data_registro_fim')
+        classificacao_grupo = request.args.get(
+            'classificacao_grupo', '').strip()
+        classificacao_subgrupo = request.args.get(
+            'classificacao_subgrupo', '').strip()
 
-        # Aplicar filtros de acesso baseado no usuário
-        if current_user.role == 'usuario_padrao':
-            query = query.filter_by(obra_id=current_user.obra_id)
-        elif data.get('obra_id'):
-            query = query.filter_by(obra_id=data['obra_id'])
+        # Query base
+        query = db.session.query(
+            Registro.id,
+            Registro.descricao,
+            Registro.observacoes,
+            Registro.data_registro,
+            Obra.nome.label('obra_nome'),
+            TipoRegistro.nome.label('tipo_nome')
+        ).join(
+            Obra, Registro.obra_id == Obra.id
+        ).join(
+            TipoRegistro, Registro.tipo_registro_id == TipoRegistro.id
+        )
 
-        # Aplicar filtros recebidos
-        if data.get('palavra_chave'):
+        # Aplicar filtros (mesma lógica da pesquisa)
+        if palavra_chave:
             query = query.filter(
                 or_(
-                    Registro.titulo.ilike(f'%{data["palavra_chave"]}%'),
-                    Registro.descricao.ilike(f'%{data["palavra_chave"]}%')
+                    Registro.descricao.ilike(f'%{palavra_chave}%'),
+                    Registro.observacoes.ilike(f'%{palavra_chave}%')
                 )
             )
 
-        if data.get('tipo_registro_id'):
-            query = query.filter_by(tipo_registro_id=data['tipo_registro_id'])
+        if obra_id and obra_id != 0:
+            query = query.filter(Registro.obra_id == obra_id)
 
-        if data.get('classificacao_grupo'):
+        if tipo_registro_id and tipo_registro_id != 0:
+            query = query.filter(Registro.tipo_registro_id == tipo_registro_id)
+
+        if data_registro_inicio:
             try:
-                db.session.execute(
-                    text("SELECT classificacao_grupo FROM registros LIMIT 1"))
-                query = query.filter_by(
-                    classificacao_grupo=data['classificacao_grupo'])
-            except:
+                data_inicio = datetime.strptime(
+                    data_registro_inicio, '%Y-%m-%d').date()
+                query = query.filter(
+                    func.date(Registro.data_registro) >= data_inicio)
+            except ValueError:
                 pass
 
-        if data.get('codigo_numero'):
-            query = query.filter(
-                Registro.codigo_numero.ilike(f'%{data["codigo_numero"]}%'))
+        if data_registro_fim:
+            try:
+                data_fim = datetime.strptime(
+                    data_registro_fim, '%Y-%m-%d').date()
+                query = query.filter(
+                    func.date(Registro.data_registro) <= data_fim)
+            except ValueError:
+                pass
 
-        if data.get('data_registro_inicio'):
-            data_inicio_dt = datetime.strptime(
-                data['data_registro_inicio'], '%Y-%m-%d')
-            query = query.filter(Registro.data_registro >= data_inicio_dt)
+        # Filtros de classificação (se existirem)
+        try:
+            if classificacao_grupo:
+                query = query.filter(
+                    Registro.classificacao_grupo == classificacao_grupo)
 
-        if data.get('data_registro_fim'):
-            data_fim_dt = datetime.strptime(
-                data['data_registro_fim'], '%Y-%m-%d')
-            data_fim_dt = data_fim_dt.replace(hour=23, minute=59, second=59)
-            query = query.filter(Registro.data_registro <= data_fim_dt)
+            if classificacao_subgrupo:
+                query = query.filter(
+                    Registro.classificacao_subgrupo == classificacao_subgrupo)
+        except Exception:
+            pass
 
         # Ordenação
-        ordenacao = data.get('ordenacao', 'data_desc')
-        if ordenacao == 'data_asc':
-            query = query.order_by(Registro.created_at.asc())
-        elif ordenacao == 'titulo_asc':
-            query = query.order_by(Registro.titulo.asc())
-        elif ordenacao == 'titulo_desc':
-            query = query.order_by(Registro.titulo.desc())
-        elif ordenacao == 'data_registro_asc':
-            query = query.order_by(Registro.data_registro.asc())
-        elif ordenacao == 'data_registro_desc':
-            query = query.order_by(Registro.data_registro.desc())
-        else:
-            query = query.order_by(Registro.created_at.desc())
+        query = query.order_by(desc(Registro.data_registro))
 
-        # Buscar todos os registros
+        # Executar query
         registros = query.all()
 
-        if not registros:
-            return jsonify({'message': 'Nenhum registro encontrado para exportar'}), 404
+        # Criar Excel
+        import pandas as pd
+        from io import BytesIO
 
-        # Preparar dados para Excel
-        dados_excel = []
+        dados = []
         for registro in registros:
-            row_data = {
+            linha = {
                 'ID': registro.id,
-                'Título': registro.titulo,
-                'Tipo de Registro': registro.tipo_registro,
-                'Data do Registro': registro.data_registro.strftime('%Y-%m-%d') if registro.data_registro else '',
-                'Código/Número': registro.codigo_numero or '',
-                'Descrição': registro.descricao,
-                'Autor': registro.autor.username if registro.autor else '',
-                'Obra': registro.obra.nome if registro.obra else '',
-                'Código da Obra': registro.obra.codigo if registro.obra else '',
-                'Tem Anexo': 'Sim' if (registro.blob_url or registro.caminho_anexo) else 'Não',
-                'Nome do Arquivo': registro.nome_arquivo_original or '',
-                'Data de Criação': registro.created_at.strftime('%Y-%m-%d %H:%M:%S') if registro.created_at else '',
-                'Última Atualização': registro.updated_at.strftime('%Y-%m-%d %H:%M:%S') if registro.updated_at else ''
+                'Obra': registro.obra_nome,
+                'Tipo': registro.tipo_nome,
+                'Descrição': registro.descricao or '',
+                'Observações': registro.observacoes or '',
+                'Data': registro.data_registro.strftime('%d/%m/%Y') if registro.data_registro else ''
             }
 
             # Adicionar classificações se existirem
             try:
                 if hasattr(registro, 'classificacao_grupo'):
-                    row_data['Classificação Grupo'] = registro.classificacao_grupo or ''
+                    linha['Grupo'] = getattr(
+                        registro, 'classificacao_grupo', '')
                 if hasattr(registro, 'classificacao_subgrupo'):
-                    row_data['Classificação Subgrupo'] = registro.classificacao_subgrupo or ''
-            except:
-                row_data['Classificação Grupo'] = ''
-                row_data['Classificação Subgrupo'] = ''
+                    linha['Subgrupo'] = getattr(
+                        registro, 'classificacao_subgrupo', '')
+            except Exception:
+                pass
 
-            dados_excel.append(row_data)
+            dados.append(linha)
 
-        # Criar arquivo Excel
+        df = pd.DataFrame(dados)
+
+        # Criar arquivo Excel em memória
         output = BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df = pd.DataFrame(dados_excel)
             df.to_excel(writer, sheet_name='Registros', index=False)
-
-            # Ajustar largura das colunas
-            worksheet = writer.sheets['Registros']
-            for column in worksheet.columns:
-                max_length = 0
-                column_letter = column[0].column_letter
-                for cell in column:
-                    try:
-                        if len(str(cell.value)) > max_length:
-                            max_length = len(str(cell.value))
-                    except:
-                        pass
-                adjusted_width = min(max_length + 2, 50)
-                worksheet.column_dimensions[column_letter].width = adjusted_width
 
         output.seek(0)
 
-        # Nome do arquivo
-        timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
-        filename = f'registros_exportacao_{timestamp}.xlsx'
+        audit_log(current_user_id, 'EXPORT_SEARCH_RESULTS',
+                  details={'total_exported': len(registros)})
 
-        return send_file(
-            BytesIO(output.read()),
+        from flask import Response
+        return Response(
+            output.getvalue(),
             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-            as_attachment=True,
-            download_name=filename
+            headers={
+                'Content-Disposition': f'attachment; filename=registros_{datetime.now().strftime("%Y%m%d_%H%M%S")}.xlsx'
+            }
         )
 
     except Exception as e:
-        print(f"Erro ao exportar: {str(e)}")
-        return jsonify({'message': f'Erro ao exportar: {str(e)}'}), 500
+        logger.error(f"Erro ao exportar resultados: {str(e)}")
+        return jsonify({'error': 'Erro ao exportar resultados'}), 500
 
 
 @pesquisa_bp.route('/<int:registro_id>/visualizar', methods=['GET'])

@@ -1,236 +1,215 @@
-from flask import Blueprint, request, jsonify
-from models.registro import Registro, db
-from models.obra import Obra
-from routes.auth import token_required, obra_access_required
-from sqlalchemy import func, desc, text
+from flask import Blueprint, jsonify, request
+from flask_jwt_extended import jwt_required, get_jwt_identity
 from datetime import datetime, timedelta
+import logging
+from ..models.registro import Registro
+from ..models.obra import Obra
+from ..models.tipo_registro import TipoRegistro
+from ..models.user import User
+from ..utils.security import audit_log
+from sqlalchemy import func, text, desc
+from .. import db
 
 dashboard_bp = Blueprint('dashboard', __name__)
-
-
-@dashboard_bp.route('/atividades-recentes', methods=['GET'])
-@token_required
-@obra_access_required
-def get_atividades_recentes(current_user):
-    try:
-        # Parâmetros
-        limit = request.args.get('limit', 10, type=int)
-        dias = request.args.get('dias', 7, type=int)  # Últimos N dias
-
-        # Data limite
-        data_limite = datetime.utcnow() - timedelta(days=dias)
-
-        # Query base
-        query = Registro.query.filter(Registro.created_at >= data_limite)
-
-        # Aplicar filtros de acesso baseado no usuário
-        if current_user.role == 'usuario_padrao':
-            query = query.filter_by(obra_id=current_user.obra_id)
-
-        # Buscar atividades recentes
-        atividades = query.order_by(
-            desc(Registro.created_at)).limit(limit).all()
-
-        return jsonify({
-            'atividades_recentes': [registro.to_dict() for registro in atividades],
-            'total': len(atividades),
-            'periodo_dias': dias
-        }), 200
-
-    except Exception as e:
-        print(f"Erro em atividades recentes: {str(e)}")
-        return jsonify({'message': f'Erro interno: {str(e)}'}), 500
+logger = logging.getLogger(__name__)
 
 
 @dashboard_bp.route('/estatisticas', methods=['GET'])
-@token_required
-@obra_access_required
-def get_estatisticas(current_user):
+@jwt_required()
+def get_estatisticas():
     try:
-        # Query base
-        base_query = Registro.query
+        current_user_id = get_jwt_identity()
 
-        # Aplicar filtros de acesso baseado no usuário
-        if current_user.role == 'usuario_padrao':
-            base_query = base_query.filter_by(obra_id=current_user.obra_id)
-
-        # Total de registros
-        total_registros = base_query.count()
-
-        # Registros por tipo
-        registros_por_tipo = db.session.query(
-            Registro.tipo_registro,
-            func.count(Registro.id).label('count')
-        )
-
-        if current_user.role == 'usuario_padrao':
-            registros_por_tipo = registros_por_tipo.filter_by(
-                obra_id=current_user.obra_id)
-
-        registros_por_tipo = registros_por_tipo.group_by(
-            Registro.tipo_registro).all()
-
-        # Registros por classificação (com verificação se coluna existe)
-        registros_por_classificacao = []
+        # Verificar se a tabela registros existe e tem as colunas necessárias
         try:
-            # Verificar se a coluna existe antes de fazer a query
-            db.session.execute(
-                text("SELECT classificacao_grupo FROM registros LIMIT 1"))
+            # Query defensiva para estatísticas básicas
+            total_registros = db.session.query(
+                func.count(Registro.id)).scalar() or 0
 
-            classificacao_query = db.session.query(
-                Registro.classificacao_grupo,
-                func.count(Registro.id).label('count')
-            ).filter(Registro.classificacao_grupo.isnot(None))
+            # Registros dos últimos 30 dias
+            data_limite = datetime.now() - timedelta(days=30)
+            registros_30_dias = db.session.query(func.count(Registro.id)).filter(
+                Registro.data_registro >= data_limite
+            ).scalar() or 0
 
-            if current_user.role == 'usuario_padrao':
-                classificacao_query = classificacao_query.filter_by(
-                    obra_id=current_user.obra_id)
+            # Registros com anexo (verificar se coluna existe)
+            try:
+                registros_com_anexo = db.session.query(func.count(Registro.id)).filter(
+                    Registro.anexos_count > 0
+                ).scalar() or 0
+            except Exception:
+                # Se a coluna anexos_count não existir, usar 0
+                registros_com_anexo = 0
 
-            registros_por_classificacao = classificacao_query.group_by(
-                Registro.classificacao_grupo).all()
-        except Exception as e:
-            print(f"Coluna classificacao_grupo não existe ainda: {str(e)}")
-            registros_por_classificacao = []
+            # Média diária
+            if total_registros > 0:
+                # Calcular dias desde o primeiro registro
+                primeiro_registro = db.session.query(
+                    func.min(Registro.data_registro)).scalar()
+                if primeiro_registro:
+                    dias_total = (datetime.now().date() -
+                                  primeiro_registro.date()).days + 1
+                    media_diaria = round(
+                        total_registros / dias_total, 1) if dias_total > 0 else 0
+                else:
+                    media_diaria = 0
+            else:
+                media_diaria = 0
 
-        # Registros dos últimos 30 dias
-        data_limite_30d = datetime.utcnow() - timedelta(days=30)
-        registros_ultimos_30d = base_query.filter(
-            Registro.created_at >= data_limite_30d).count()
-
-        # Registros por obra (apenas para admin)
-        registros_por_obra = []
-        if current_user.role == 'administrador':
-            registros_por_obra = db.session.query(
-                Obra.nome,
-                Obra.id,
-                func.count(Registro.id).label('count')
-            ).outerjoin(Registro).group_by(Obra.id, Obra.nome).all()
-
-        # Registros com anexo vs sem anexo
-        registros_com_anexo = base_query.filter(
-            (Registro.blob_url.isnot(None)) | (
-                Registro.caminho_anexo.isnot(None))
-        ).count()
-        registros_sem_anexo = total_registros - registros_com_anexo
-
-        return jsonify({
-            'total_registros': total_registros,
-            'registros_ultimos_30d': registros_ultimos_30d,
-            'registros_por_tipo': [
-                {'tipo': tipo, 'count': count}
-                for tipo, count in registros_por_tipo
-            ],
-            'registros_por_classificacao': [
-                {'grupo': grupo, 'count': count}
-                for grupo, count in registros_por_classificacao
-            ],
-            'registros_por_obra': [
-                {'obra_nome': nome, 'obra_id': obra_id, 'count': count}
-                for nome, obra_id, count in registros_por_obra
-            ],
-            'registros_anexos': {
-                'com_anexo': registros_com_anexo,
-                'sem_anexo': registros_sem_anexo
+            estatisticas = {
+                'total_registros': total_registros,
+                'registros_ultimos_30_dias': registros_30_dias,
+                'registros_com_anexo': registros_com_anexo,
+                'media_diaria': media_diaria
             }
-        }), 200
+
+            audit_log(current_user_id, 'DASHBOARD_STATS_VIEW',
+                      details={'stats': estatisticas})
+            return jsonify(estatisticas)
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar estatísticas: {str(e)}")
+            # Retornar estatísticas zeradas em caso de erro
+            return jsonify({
+                'total_registros': 0,
+                'registros_ultimos_30_dias': 0,
+                'registros_com_anexo': 0,
+                'media_diaria': 0
+            })
 
     except Exception as e:
-        print(f"Erro em estatísticas: {str(e)}")
-        return jsonify({'message': f'Erro interno: {str(e)}'}), 500
-
-
-@dashboard_bp.route('/resumo-obra/<int:obra_id>', methods=['GET'])
-@token_required
-@obra_access_required
-def get_resumo_obra(current_user, obra_id):
-    try:
-        # Verificar se o usuário tem acesso a esta obra
-        if current_user.role == 'usuario_padrao' and current_user.obra_id != obra_id:
-            return jsonify({'message': 'Acesso negado a esta obra'}), 403
-
-        # Verificar se a obra existe
-        obra = Obra.query.get(obra_id)
-        if not obra:
-            return jsonify({'message': 'Obra não encontrada'}), 404
-
-        # Estatísticas da obra
-        total_registros = Registro.query.filter_by(obra_id=obra_id).count()
-
-        # Registros por tipo nesta obra
-        registros_por_tipo = db.session.query(
-            Registro.tipo_registro,
-            func.count(Registro.id).label('count')
-        ).filter_by(obra_id=obra_id).group_by(Registro.tipo_registro).all()
-
-        # Últimos registros desta obra
-        ultimos_registros = Registro.query.filter_by(obra_id=obra_id)\
-            .order_by(desc(Registro.created_at)).limit(5).all()
-
-        # Registros dos últimos 7 dias
-        data_limite_7d = datetime.utcnow() - timedelta(days=7)
-        registros_ultimos_7d = Registro.query.filter_by(obra_id=obra_id)\
-            .filter(Registro.created_at >= data_limite_7d).count()
-
-        return jsonify({
-            'obra': obra.to_dict(),
-            'total_registros': total_registros,
-            'registros_ultimos_7d': registros_ultimos_7d,
-            'registros_por_tipo': [
-                {'tipo': tipo, 'count': count}
-                for tipo, count in registros_por_tipo
-            ],
-            'ultimos_registros': [registro.to_dict() for registro in ultimos_registros]
-        }), 200
-
-    except Exception as e:
-        print(f"Erro em resumo obra: {str(e)}")
-        return jsonify({'message': f'Erro interno: {str(e)}'}), 500
+        logger.error(f"Erro geral nas estatísticas: {str(e)}")
+        return jsonify({'error': 'Erro interno do servidor'}), 500
 
 
 @dashboard_bp.route('/timeline', methods=['GET'])
-@token_required
-@obra_access_required
-def get_timeline(current_user):
+@jwt_required()
+def get_timeline():
     try:
-        # Parâmetros
+        current_user_id = get_jwt_identity()
         dias = request.args.get('dias', 30, type=int)
         obra_id = request.args.get('obra_id', type=int)
 
-        # Data limite
-        data_limite = datetime.utcnow() - timedelta(days=dias)
+        data_limite = datetime.now() - timedelta(days=dias)
 
         # Query base
-        query = Registro.query.filter(Registro.created_at >= data_limite)
-
-        # Aplicar filtros de acesso baseado no usuário
-        if current_user.role == 'usuario_padrao':
-            query = query.filter_by(obra_id=current_user.obra_id)
-        elif obra_id:
-            query = query.filter_by(obra_id=obra_id)
-
-        # Agrupar por data
-        timeline = db.session.query(
-            func.date(Registro.created_at).label('data'),
-            func.count(Registro.id).label('count')
+        query = db.session.query(
+            func.date(Registro.data_registro).label('data'),
+            func.count(Registro.id).label('registros')
+        ).filter(
+            Registro.data_registro >= data_limite
         )
 
-        if current_user.role == 'usuario_padrao':
-            timeline = timeline.filter_by(obra_id=current_user.obra_id)
-        elif obra_id:
-            timeline = timeline.filter_by(obra_id=obra_id)
+        # Filtrar por obra se especificado
+        if obra_id:
+            query = query.filter(Registro.obra_id == obra_id)
 
-        timeline = timeline.filter(Registro.created_at >= data_limite)\
-            .group_by(func.date(Registro.created_at))\
-            .order_by(func.date(Registro.created_at)).all()
+        # Agrupar por data
+        resultados = query.group_by(func.date(Registro.data_registro)).all()
 
-        return jsonify({
-            'timeline': [
-                {'data': data.isoformat(), 'count': count}
-                for data, count in timeline
-            ],
-            'periodo_dias': dias
-        }), 200
+        # Converter para formato do gráfico
+        timeline_data = []
+        for resultado in resultados:
+            timeline_data.append({
+                'data': resultado.data.strftime('%d/%m'),
+                'registros': resultado.registros
+            })
+
+        # Ordenar por data
+        timeline_data.sort(key=lambda x: datetime.strptime(x['data'], '%d/%m'))
+
+        audit_log(current_user_id, 'DASHBOARD_TIMELINE_VIEW',
+                  details={'dias': dias, 'obra_id': obra_id})
+        return jsonify(timeline_data)
 
     except Exception as e:
-        print(f"Erro em timeline: {str(e)}")
-        return jsonify({'message': f'Erro interno: {str(e)}'}), 500
+        logger.error(f"Erro ao buscar timeline: {str(e)}")
+        return jsonify([])
+
+
+@dashboard_bp.route('/atividades-recentes', methods=['GET'])
+@jwt_required()
+def get_atividades_recentes():
+    try:
+        current_user_id = get_jwt_identity()
+        limit = request.args.get('limit', 5, type=int)
+
+        # Query defensiva para atividades recentes
+        try:
+            query = db.session.query(
+                Registro.id,
+                Registro.descricao,
+                Registro.data_registro,
+                Obra.nome.label('obra_nome'),
+                TipoRegistro.nome.label('tipo_nome')
+            ).join(
+                Obra, Registro.obra_id == Obra.id
+            ).join(
+                TipoRegistro, Registro.tipo_registro_id == TipoRegistro.id
+            ).order_by(
+                desc(Registro.data_registro)
+            ).limit(limit)
+
+            resultados = query.all()
+
+            atividades = []
+            for resultado in resultados:
+                atividades.append({
+                    'id': resultado.id,
+                    'descricao': resultado.descricao or 'Sem descrição',
+                    'data_registro': resultado.data_registro.isoformat() if resultado.data_registro else None,
+                    'obra_nome': resultado.obra_nome or 'Obra não encontrada',
+                    'tipo_nome': resultado.tipo_nome or 'Tipo não encontrado'
+                })
+
+            audit_log(current_user_id, 'DASHBOARD_ACTIVITIES_VIEW',
+                      details={'limit': limit})
+            return jsonify(atividades)
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar atividades recentes: {str(e)}")
+            return jsonify([])
+
+    except Exception as e:
+        logger.error(f"Erro geral nas atividades recentes: {str(e)}")
+        return jsonify([])
+
+
+@dashboard_bp.route('/top-tipos-registro', methods=['GET'])
+@jwt_required()
+def get_top_tipos_registro():
+    try:
+        current_user_id = get_jwt_identity()
+
+        try:
+            # Query para top 10 tipos de registro
+            query = db.session.query(
+                TipoRegistro.nome,
+                func.count(Registro.id).label('total')
+            ).join(
+                Registro, TipoRegistro.id == Registro.tipo_registro_id
+            ).group_by(
+                TipoRegistro.id, TipoRegistro.nome
+            ).order_by(
+                desc(func.count(Registro.id))
+            ).limit(10)
+
+            resultados = query.all()
+
+            top_tipos = []
+            for resultado in resultados:
+                top_tipos.append({
+                    'nome': resultado.nome,
+                    'total': resultado.total
+                })
+
+            audit_log(current_user_id, 'DASHBOARD_TOP_TYPES_VIEW')
+            return jsonify(top_tipos)
+
+        except Exception as e:
+            logger.error(f"Erro ao buscar top tipos: {str(e)}")
+            return jsonify([])
+
+    except Exception as e:
+        logger.error(f"Erro geral nos top tipos: {str(e)}")
+        return jsonify([])
