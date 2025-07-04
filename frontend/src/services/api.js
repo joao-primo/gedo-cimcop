@@ -63,16 +63,18 @@ export const dashboardAPI = {
   getTimeline: (dias = 30) => api.get(`/dashboard/timeline?dias=${dias}`),
 }
 
-// APIs de Pesquisa
+// ✅ APIs de Pesquisa - ATUALIZADAS
 export const pesquisaAPI = {
   getFiltros: () => api.get("/pesquisa/filtros"),
   pesquisar: (params) => api.get("/pesquisa/", { params }),
+  // ✅ NOVO: Exportar para Excel
   exportarExcel: (params) =>
-    api.get("/pesquisa/exportar", {
+    api.get("/pesquisa/exportar-excel", {
       params,
       responseType: "blob",
-      timeout: 60000,
+      timeout: 60000, // 60 segundos para exportações grandes
     }),
+  // ✅ NOVO: Visualizar registro completo
   visualizar: (id) => api.get(`/pesquisa/visualizar/${id}`),
 }
 
@@ -161,9 +163,32 @@ export const registrosAPI = {
       }
     }
   },
-  importarLote: (formData) =>
-    api.post("/importacao/lote", formData, {
+}
+
+// ✅ APIs de Importação - NOVA SEÇÃO
+export const importacaoAPI = {
+  // Baixar template Excel
+  downloadTemplate: () =>
+    api.get("/importacao/template", {
+      responseType: "blob",
+      timeout: 30000,
+    }),
+  // Processar planilha para revisão
+  processarPlanilha: (formData) =>
+    api.post("/importacao/processar", formData, {
       headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000, // 60 segundos para processamento
+    }),
+  // Upload temporário de anexo
+  uploadAnexoTemp: (formData) =>
+    api.post("/importacao/upload-anexo", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+      timeout: 60000,
+    }),
+  // Finalizar importação
+  finalizarImportacao: (data) =>
+    api.post("/importacao/finalizar", data, {
+      timeout: 120000, // 2 minutos para finalização
     }),
 }
 
@@ -211,37 +236,14 @@ export const workflowAPI = {
   deletar: (id) => api.delete(`/workflow/${id}`),
 }
 
-// ✨ NOVAS APIs de Importação em Lote
-export const importacaoAPI = {
-  downloadTemplate: () =>
-    api.get("/importacao/template", {
-      responseType: "blob",
-      timeout: 60000,
-    }),
-  processarPlanilha: (formData) =>
-    api.post("/importacao/processar", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 60000,
-    }),
-  uploadAnexo: (formData) =>
-    api.post("/importacao/upload-anexo", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-      timeout: 60000,
-    }),
-  finalizarImportacao: (data) =>
-    api.post("/importacao/finalizar", data, {
-      timeout: 120000, // 2 minutos para importações grandes
-    }),
-}
-
-// ✨ NOVAS APIs de Relatórios
+// ✅ APIs de Relatórios - PREPARADO PARA FUTURO
 export const relatoriosAPI = {
-  // Placeholder para futuras funcionalidades
-  listar: () => api.get("/relatorios/"),
-  gerar: (tipo, params) =>
-    api.post(`/relatorios/${tipo}`, params, {
+  // Placeholder para futuras implementações
+  gerarRelatorio: (tipo, params) => api.post(`/relatorios/${tipo}`, params),
+  listarRelatorios: () => api.get("/relatorios/"),
+  downloadRelatorio: (id) =>
+    api.get(`/relatorios/${id}/download`, {
       responseType: "blob",
-      timeout: 120000,
     }),
 }
 

@@ -93,7 +93,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
       const formData = new FormData()
       formData.append("arquivo", file)
 
-      const response = await importacaoAPI.uploadAnexo(formData)
+      const response = await importacaoAPI.uploadAnexoTemp(formData)
 
       // Atualizar registro com dados do anexo
       setRegistrosProcessados((prev) =>
@@ -194,12 +194,12 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                   <strong>Obra:</strong> {registro.obra_nome}
                 </div>
               </div>
-              {/* ✨ NOVA SEÇÃO: Classificação */}
+              {/* ✅ NOVO: Exibir classificação */}
               {registro.classificacao_grupo && (
-                <div className="mt-2 flex items-center space-x-2">
+                <div className="mt-2 flex items-center gap-2">
                   <Tag className="w-4 h-4 text-blue-600" />
-                  <span className="text-sm">
-                    <strong>Classificação:</strong> {registro.classificacao_grupo} → {registro.classificacao_subgrupo}
+                  <span className="text-sm font-medium text-blue-700">
+                    {registro.classificacao_grupo} → {registro.classificacao_subgrupo}
                   </span>
                 </div>
               )}
@@ -286,17 +286,12 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                     1. Baixar Template
                   </CardTitle>
                   <CardDescription>
-                    Baixe o template Excel com o formato correto para importação incluindo classificações
+                    Baixe o template Excel com o formato correto para importação
+                    <br />
+                    <strong className="text-blue-600">✅ Agora inclui sistema de classificação hierárquico!</strong>
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="bg-blue-50 p-4 rounded-lg mb-4">
-                    <h4 className="font-semibold text-blue-800 mb-2">✨ Novidade: Sistema de Classificação</h4>
-                    <p className="text-sm text-blue-700">
-                      O template agora inclui campos obrigatórios de classificação (Grupo e Subgrupo) para melhor
-                      organização dos registros.
-                    </p>
-                  </div>
                   <Button onClick={downloadTemplate} disabled={loading} variant="outline">
                     {loading ? (
                       <>
@@ -310,6 +305,27 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                       </>
                     )}
                   </Button>
+
+                  {/* ✅ NOVA SEÇÃO: Informações sobre classificações */}
+                  <div className="mt-4 p-4 bg-blue-50 border border-blue-200 rounded-lg">
+                    <h4 className="font-semibold text-blue-800 mb-2 flex items-center">
+                      <Tag className="w-4 h-4 mr-2" />
+                      Sistema de Classificação
+                    </h4>
+                    <p className="text-sm text-blue-700 mb-2">
+                      O template agora inclui campos obrigatórios de classificação:
+                    </p>
+                    <ul className="text-xs text-blue-600 space-y-1">
+                      <li>
+                        • <strong>classificacao_grupo:</strong> Grupo principal (ex: Contratos, Projetos, etc.)
+                      </li>
+                      <li>
+                        • <strong>classificacao_subgrupo:</strong> Subgrupo específico (ex: Contrato Principal, ART/RRT,
+                        etc.)
+                      </li>
+                      <li>• Consulte a aba "Classificações" no template para ver todas as opções válidas</li>
+                    </ul>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -388,13 +404,13 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                                   <h4 className="font-semibold">{registro.titulo}</h4>
                                   <p className="text-sm text-gray-600">Tipo: {registro.tipo_registro}</p>
                                   <p className="text-sm text-gray-600">Data: {registro.data_registro}</p>
-                                  {/* ✨ NOVA LINHA: Classificação */}
+                                  {/* ✅ NOVO: Mostrar classificação na revisão */}
                                   {registro.classificacao_grupo && (
-                                    <div className="flex items-center space-x-1 mt-1">
+                                    <div className="flex items-center gap-1 mt-1">
                                       <Tag className="w-3 h-3 text-blue-600" />
-                                      <p className="text-xs text-blue-600">
+                                      <span className="text-xs text-blue-700">
                                         {registro.classificacao_grupo} → {registro.classificacao_subgrupo}
-                                      </p>
+                                      </span>
                                     </div>
                                   )}
                                 </div>
@@ -519,7 +535,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />
                     Finalizando Importação
                   </CardTitle>
-                  <CardDescription>Criando registros com classificações e processando workflows...</CardDescription>
+                  <CardDescription>Criando registros e processando workflows...</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Progress value={progresso} className="mb-4" />
