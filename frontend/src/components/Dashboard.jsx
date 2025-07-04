@@ -594,7 +594,7 @@ const Dashboard = () => {
               <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
               Top 10 Tipos de Registro
             </CardTitle>
-            <CardDescription>Os 10 tipos com mais registros (cores baseadas na quantidade)</CardDescription>
+            <CardDescription>Os 10 tipos com mais registros</CardDescription>
           </CardHeader>
           <CardContent>
             {registrosPorTipo.length > 0 ? (
