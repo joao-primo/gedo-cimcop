@@ -124,9 +124,10 @@ const Dashboard = () => {
 
       // Garantir que registros_por_tipo seja sempre um array e ordenar
       if (estatisticasFiltradas.registros_por_tipo && Array.isArray(estatisticasFiltradas.registros_por_tipo)) {
-        estatisticasFiltradas.registros_por_tipo = estatisticasFiltradas.registros_por_tipo.sort(
-          (a, b) => b.count - a.count,
-        )
+        // Ordenar do maior para o menor e pegar apenas os 10 primeiros
+        estatisticasFiltradas.registros_por_tipo = estatisticasFiltradas.registros_por_tipo
+          .sort((a, b) => b.count - a.count)
+          .slice(0, 10) // Limitar aos 10 tipos principais
       } else {
         estatisticasFiltradas.registros_por_tipo = []
       }
@@ -178,38 +179,35 @@ const Dashboard = () => {
     carregarDados(obraId)
   }
 
-  // Paleta de cores elegante - tons de azul
-  const gerarCoresElegantes = (quantidade) => {
-    const coresBase = [
-      "#1e40af", // azul escuro
-      "#3b82f6", // azul médio
-      "#60a5fa", // azul claro
-      "#93c5fd", // azul muito claro
-      "#1e3a8a", // azul navy
-      "#2563eb", // azul royal
-      "#3730a3", // azul índigo
-      "#4f46e5", // azul violeta
-      "#6366f1", // azul lavanda
-      "#8b5cf6", // roxo claro
-      "#0ea5e9", // azul céu
-      "#06b6d4", // azul turquesa
-      "#0891b2", // azul petróleo
-      "#0e7490", // azul aço
-      "#155e75", // azul escuro aço
-      "#164e63", // azul marinho
-      "#1e293b", // azul grafite
-      "#334155", // azul cinza
-      "#475569", // azul cinza claro
-      "#64748b", // azul cinza médio
-      "#94a3b8", // azul cinza suave
-    ]
+  // Função para gerar gradiente de cores baseado nos valores
+  const gerarGradienteAzul = (dados) => {
+    if (!dados || dados.length === 0) return []
 
-    // Se precisar de mais cores que as disponíveis, repetir com variações
-    const cores = []
-    for (let i = 0; i < quantidade; i++) {
-      cores.push(coresBase[i % coresBase.length])
+    // Encontrar o valor máximo e mínimo
+    const valores = dados.map((item) => item.count || 0)
+    const maxValor = Math.max(...valores)
+    const minValor = Math.min(...valores)
+
+    // Se todos os valores são iguais, usar cor média
+    if (maxValor === minValor) {
+      return dados.map(() => "#3b82f6") // Azul médio
     }
-    return cores
+
+    // Gerar cores baseadas na posição relativa do valor
+    return dados.map((item) => {
+      const valor = item.count || 0
+      // Calcular a intensidade (0 a 1) baseada no valor
+      const intensidade = (valor - minValor) / (maxValor - minValor)
+
+      // Interpolar entre azul claro e azul escuro
+      // Azul claro: #93c5fd (RGB: 147, 197, 253)
+      // Azul escuro: #1e40af (RGB: 30, 64, 175)
+      const r = Math.round(147 - (147 - 30) * intensidade)
+      const g = Math.round(197 - (197 - 64) * intensidade)
+      const b = Math.round(253 - (253 - 175) * intensidade)
+
+      return `rgb(${r}, ${g}, ${b})`
+    })
   }
 
   // Configurações dos gráficos com proteção contra dados undefined
@@ -228,7 +226,7 @@ const Dashboard = () => {
         {
           label: "Registros",
           data: registrosPorTipo.map((item) => item.count || 0),
-          backgroundColor: gerarCoresElegantes(registrosPorTipo.length),
+          backgroundColor: gerarGradienteAzul(registrosPorTipo),
           borderWidth: 0,
           borderRadius: 4,
         },
@@ -535,7 +533,7 @@ const Dashboard = () => {
           </CardHeader>
           <CardContent>
             <div className="text-3xl font-bold text-gray-900">{registrosPorTipo.length || 0}</div>
-            <p className="text-xs text-gray-500 mt-1">Tipos diferentes</p>
+            <p className="text-xs text-gray-500 mt-1">Top 10 tipos</p>
           </CardContent>
         </Card>
 
@@ -589,14 +587,14 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico de Tipos - Agora com cores elegantes */}
+        {/* Gráfico de Tipos - Top 10 com gradiente baseado em valores */}
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center">
               <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
-              Distribuição por Tipo
+              Top 10 Tipos de Registro
             </CardTitle>
-            <CardDescription>Registros por tipo (ordenado do maior para o menor)</CardDescription>
+            <CardDescription>Os 10 tipos com mais registros (cores baseadas na quantidade)</CardDescription>
           </CardHeader>
           <CardContent>
             {registrosPorTipo.length > 0 ? (
