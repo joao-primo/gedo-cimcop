@@ -1,7 +1,7 @@
 "use client"
 
-import { useState, useEffect, useContext } from "react"
-import { AuthContext } from "../contexts/AuthContext"
+import { useState, useEffect } from "react"
+import { useAuth } from "../contexts/AuthContext"
 import {
   BarChart,
   Bar,
@@ -19,7 +19,7 @@ import {
 import { FileText, TrendingUp, Calendar, AlertCircle, CheckCircle, Clock, Activity } from "lucide-react"
 
 const Dashboard = () => {
-  const { user } = useContext(AuthContext)
+  const { user } = useAuth()
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState(null)
   const [estatisticas, setEstatisticas] = useState({
