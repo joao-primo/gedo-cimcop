@@ -7,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { obrasAPI } from "../services/api" // ← ÚNICA ADIÇÃO
+import { obrasAPI } from "../services/api"
 import {
   Building2,
   Plus,
