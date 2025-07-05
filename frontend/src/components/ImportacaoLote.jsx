@@ -1,3 +1,5 @@
+"use client"
+
 import { useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import axios from "../services/api"
@@ -248,17 +250,17 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
   return (
     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-xl max-w-6xl w-full max-h-[90vh] overflow-hidden">
-        <div className="flex justify-between items-center p-6 border-b bg-gray-50">
+        <div className="flex justify-between items-center p-6 border-b bg-white">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Importação em Lote</h2>
             <p className="text-gray-600">Importe múltiplos registros via planilha</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleClose} className="hover:bg-gray-200">
+          <Button variant="ghost" size="sm" onClick={handleClose} className="hover:bg-gray-100">
             <X className="h-4 w-4" />
           </Button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)] bg-gray-50">
+        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)] bg-white">
           {/* Mensagens */}
           {mensagem.texto && (
             <Alert
@@ -280,7 +282,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
           {/* Etapa 1: Upload da Planilha */}
           {etapa === 1 && (
             <div className="space-y-6">
-              <Card className="bg-white">
+              <Card className="bg-white border border-gray-200">
                 <CardHeader>
                   <CardTitle className="flex items-center">
                     <Download className="mr-2 h-5 w-5" />
@@ -305,7 +307,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                 </CardContent>
               </Card>
 
-              <Card className="bg-white">
+              <Card className="bg-white border border-gray-200">
                 <CardHeader>
                   <CardTitle className="flex items-center">
                     <Upload className="mr-2 h-5 w-5" />
@@ -343,7 +345,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
           {/* Etapa 2: Revisão dos Dados */}
           {etapa === 2 && (
             <div className="space-y-6">
-              <Card className="bg-white">
+              <Card className="bg-white border border-gray-200">
                 <CardHeader>
                   <CardTitle>Revisão dos Dados</CardTitle>
                   <CardDescription>Verifique os dados processados antes de continuar</CardDescription>
@@ -373,7 +375,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                     <TabsContent value="validos" className="space-y-4">
                       <div className="max-h-96 overflow-y-auto">
                         {registrosProcessados.map((registro) => (
-                          <Card key={registro.id_temp} className="mb-3 bg-white">
+                          <Card key={registro.id_temp} className="mb-3 bg-white border border-gray-200">
                             <CardContent className="p-4">
                               <div className="grid grid-cols-2 gap-4">
                                 <div>
@@ -395,7 +397,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                     <TabsContent value="erros" className="space-y-4">
                       <div className="max-h-96 overflow-y-auto">
                         {erros.map((erro, index) => (
-                          <Card key={index} className="mb-3 border-red-200 bg-white">
+                          <Card key={index} className="mb-3 border-red-200 bg-red-50">
                             <CardContent className="p-4">
                               <div className="flex items-start space-x-3">
                                 <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
@@ -431,7 +433,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
           {/* Etapa 3: Upload de Anexos */}
           {etapa === 3 && (
             <div className="space-y-6">
-              <Card className="bg-white">
+              <Card className="bg-white border border-gray-200">
                 <CardHeader>
                   <CardTitle>Anexar Documentos</CardTitle>
                   <CardDescription>
@@ -496,7 +498,7 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
           {/* Etapa 4: Finalização */}
           {etapa === 4 && (
             <div className="space-y-6">
-              <Card className="bg-white">
+              <Card className="bg-white border border-gray-200">
                 <CardHeader>
                   <CardTitle className="flex items-center">
                     <Loader2 className="mr-2 h-5 w-5 animate-spin" />

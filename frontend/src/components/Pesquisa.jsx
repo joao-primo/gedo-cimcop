@@ -1,3 +1,5 @@
+"use client"
+
 import { useEffect, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { pesquisaAPI, registrosAPI } from "../services/api"
@@ -59,11 +61,13 @@ const Pesquisa = () => {
     obras: [],
     tipos_registro: [],
     autores: [],
+    grupos_classificacao: [],
   })
   const [form, setForm] = useState({
     data_registro_inicio: "",
-    obra_id: "0",
-    tipo_registro_id: "0",
+    obra_id: "0", // Updated default value
+    tipo_registro_id: "0", // Updated default value
+    classificacao_grupo: "",
     palavra_chave: "",
   })
   const [registros, setRegistros] = useState([])
@@ -103,6 +107,7 @@ const Pesquisa = () => {
         obras: response.data.obras || [],
         tipos_registro: response.data.tipos_registro || [],
         autores: response.data.autores || [],
+        grupos_classificacao: response.data.grupos_classificacao || [],
       })
     } catch (err) {
       console.error("Erro ao buscar filtros:", err)
@@ -157,8 +162,9 @@ const Pesquisa = () => {
     console.log("Limpando filtros...")
     setForm({
       data_registro_inicio: "",
-      obra_id: "0",
-      tipo_registro_id: "0",
+      obra_id: "0", // Updated default value
+      tipo_registro_id: "0", // Updated default value
+      classificacao_grupo: "",
       palavra_chave: "",
     })
     fetchRegistros(1)
@@ -198,7 +204,7 @@ const Pesquisa = () => {
       console.log("Carregando dados completos do registro:", registroId)
 
       const response = await pesquisaAPI.visualizar(registroId)
-      setRegistroSelecionado(response.data)
+      setRegistroSelecionado(response.data.registro)
       setModalVisualizacao(true)
     } catch (err) {
       console.error("Erro ao carregar registro:", err)
@@ -364,20 +370,10 @@ const Pesquisa = () => {
             <CardDescription>Use os filtros abaixo para refinar sua pesquisa</CardDescription>
           </CardHeader>
           <CardContent>
+            {/* Primeira linha de filtros */}
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
               <div>
-                <Label htmlFor="palavra_chave">Palavra-chave</Label>
-                <Input
-                  id="palavra_chave"
-                  name="palavra_chave"
-                  placeholder="Buscar em título, descrição..."
-                  value={form.palavra_chave}
-                  onChange={handleInputChange}
-                />
-              </div>
-
-              <div>
-                <Label htmlFor="data_registro_inicio">Data (a partir de)</Label>
+                <Label htmlFor="data_registro_inicio">Data do Registro (a partir de)</Label>
                 <Input
                   id="data_registro_inicio"
                   name="data_registro_inicio"
@@ -425,8 +421,41 @@ const Pesquisa = () => {
                   </SelectContent>
                 </Select>
               </div>
+
+              <div>
+                <Label htmlFor="classificacao_grupo">Classificação</Label>
+                <Select
+                  value={form.classificacao_grupo}
+                  onValueChange={(value) => handleChange("classificacao_grupo", value)}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Selecione uma classificação" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="">Todas as classificações</SelectItem>
+                    {filtros.grupos_classificacao.map((grupo) => (
+                      <SelectItem key={grupo} value={grupo}>
+                        {grupo}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
 
+            {/* Segunda linha - Palavra-chave */}
+            <div className="mb-4">
+              <Label htmlFor="palavra_chave">Palavra-chave</Label>
+              <Input
+                id="palavra_chave"
+                name="palavra_chave"
+                placeholder="Buscar em título, descrição..."
+                value={form.palavra_chave}
+                onChange={handleInputChange}
+              />
+            </div>
+
+            {/* Botões */}
             <div className="flex gap-2">
               <Button onClick={handleSearch} disabled={loading}>
                 {loading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
@@ -520,7 +549,6 @@ const Pesquisa = () => {
                           <TableCell>
                             <div className="text-sm">
                               <div>{formatDate(registro.data_registro)}</div>
-                              <div className="text-gray-500">{formatDateTime(registro.created_at)}</div>
                             </div>
                           </TableCell>
                           {isAdmin() && (
@@ -707,7 +735,9 @@ const Pesquisa = () => {
                           <Label className="text-sm font-medium text-gray-600">Obra</Label>
                           <div className="flex items-center mt-1">
                             <Building2 className="h-4 w-4 mr-2 text-gray-400" />
-                            <span className="text-gray-900">Obra #{registroSelecionado.obra_id}</span>
+                            <span className="text-gray-900">
+                              {registroSelecionado.obra_nome || `Obra #${registroSelecionado.obra_id}`}
+                            </span>
                           </div>
                         </div>
                       )}

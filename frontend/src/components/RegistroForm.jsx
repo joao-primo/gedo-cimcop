@@ -1,3 +1,5 @@
+"use client"
+
 import { useEffect, useState } from "react"
 import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI, classificacoesAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -8,18 +10,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import {
-  FileText,
-  Upload,
-  AlertTriangle,
-  CheckCircle,
-  Loader2,
-  Building2,
-  Calendar,
-  Hash,
-  Database,
-} from "lucide-react"
-import ImportacaoLote from "./ImportacaoLote"
+import { FileText, Upload, AlertTriangle, CheckCircle, Loader2, Building2, Calendar, Hash } from "lucide-react"
 
 export default function RegistroForm() {
   const [tipos, setTipos] = useState([])
@@ -28,7 +19,6 @@ export default function RegistroForm() {
   const [user, setUser] = useState(null)
   const [obraSuspensa, setObraSuspensa] = useState(false)
   const [loading, setLoading] = useState(false)
-  const [showImportacao, setShowImportacao] = useState(false)
   const [formData, setFormData] = useState({
     titulo: "",
     tipo_registro: "",
@@ -53,9 +43,17 @@ export default function RegistroForm() {
       const tiposRes = await tiposRegistroAPI.listar()
       setTipos(tiposRes.data.tipos_registro || [])
 
-      // NOVO: Carregar classificações
+      // Carregar classificações
       const classificacoesRes = await classificacoesAPI.listar()
-      setClassificacoes(classificacoesRes.data.classificacoes || {})
+      console.log("Classificações carregadas:", classificacoesRes.data)
+
+      // Verificar se a resposta tem a estrutura esperada
+      if (classificacoesRes.data && classificacoesRes.data.classificacoes) {
+        setClassificacoes(classificacoesRes.data.classificacoes)
+      } else {
+        console.warn("Estrutura de classificações inesperada:", classificacoesRes.data)
+        setClassificacoes({})
+      }
 
       const userRes = await authAPI.me()
       const userData = userRes.data.user
@@ -91,7 +89,20 @@ export default function RegistroForm() {
 
   const handleSelectChange = (name, value) => {
     setFormData((prev) => {
-      return { ...prev, [name]: value }
+      const newFormData = { ...prev, [name]: value }
+
+      // Se mudou o grupo de classificação, limpar subgrupo e ID
+      if (name === "classificacao_grupo") {
+        newFormData.classificacao_subgrupo = ""
+        newFormData.classificacao_id = ""
+      }
+
+      // Se mudou o subgrupo, limpar ID
+      if (name === "classificacao_subgrupo") {
+        newFormData.classificacao_id = ""
+      }
+
+      return newFormData
     })
   }
 
@@ -116,7 +127,7 @@ export default function RegistroForm() {
     setLoading(true)
     setMensagem({ tipo: "", texto: "" })
 
-    // ← CORREÇÃO: Construir FormData corretamente
+    // Construir FormData corretamente
     const data = new FormData()
 
     // Campos obrigatórios
@@ -127,6 +138,10 @@ export default function RegistroForm() {
     if (formData.codigo_numero) data.append("codigo_numero", formData.codigo_numero)
     if (formData.descricao) data.append("descricao", formData.descricao)
     if (formData.obra_id) data.append("obra_id", formData.obra_id)
+
+    // Campos de classificação
+    if (formData.classificacao_grupo) data.append("classificacao_grupo", formData.classificacao_grupo)
+    if (formData.classificacao_subgrupo) data.append("classificacao_subgrupo", formData.classificacao_subgrupo)
     if (formData.classificacao_id) data.append("classificacao_id", formData.classificacao_id)
 
     // Anexo (opcional)
@@ -176,8 +191,25 @@ export default function RegistroForm() {
     }
   }
 
-  const handleImportacaoSuccess = () => {
-    setMensagem({ tipo: "success", texto: "Importação concluída com sucesso!" })
+  // Função para obter subgrupos baseado no grupo selecionado
+  const getSubgrupos = () => {
+    if (!formData.classificacao_grupo || !classificacoes[formData.classificacao_grupo]) {
+      return []
+    }
+    return Object.keys(classificacoes[formData.classificacao_grupo])
+  }
+
+  // Função para obter IDs baseado no grupo e subgrupo selecionados
+  const getClassificacaoIds = () => {
+    if (
+      !formData.classificacao_grupo ||
+      !formData.classificacao_subgrupo ||
+      !classificacoes[formData.classificacao_grupo] ||
+      !classificacoes[formData.classificacao_grupo][formData.classificacao_subgrupo]
+    ) {
+      return []
+    }
+    return classificacoes[formData.classificacao_grupo][formData.classificacao_subgrupo]
   }
 
   if (obraSuspensa) {
@@ -198,16 +230,10 @@ export default function RegistroForm() {
 
   return (
     <div className="max-w-4xl mx-auto p-6">
-      {/* Header com opções */}
-      <div className="flex justify-between items-center mb-6">
-        <div>
-          <h1 className="text-3xl font-bold text-gray-900">Registros</h1>
-          <p className="text-gray-600">Crie novos registros ou importe em lote</p>
-        </div>
-        <Button onClick={() => setShowImportacao(true)} variant="outline" className="flex items-center space-x-2">
-          <Database className="h-4 w-4" />
-          <span>Importação em Lote</span>
-        </Button>
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-3xl font-bold text-gray-900">Novo Registro</h1>
+        <p className="text-gray-600">Crie um novo registro de documento</p>
       </div>
 
       <Card>
@@ -284,11 +310,11 @@ export default function RegistroForm() {
                 />
               </div>
 
-              {/* Tipo de Registro */}
+              {/* Tipo de Registro - Agora mais largo */}
               <div className="space-y-2">
                 <Label>Tipo de Registro *</Label>
                 <Select value={formData.tipo_registro_id} onValueChange={handleTipoRegistroChange} required>
-                  <SelectTrigger>
+                  <SelectTrigger className="w-full">
                     <SelectValue placeholder={tipos.length === 0 ? "Nenhum tipo disponível" : "Selecione o tipo"} />
                   </SelectTrigger>
                   <SelectContent>
@@ -371,17 +397,17 @@ export default function RegistroForm() {
                   value={formData.classificacao_subgrupo}
                   onValueChange={(value) => handleSelectChange("classificacao_subgrupo", value)}
                   required
+                  disabled={!formData.classificacao_grupo}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione o subgrupo" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formData.classificacao_grupo &&
-                      classificacoes[formData.classificacao_grupo].map((subgrupo) => (
-                        <SelectItem key={subgrupo} value={subgrupo}>
-                          {subgrupo}
-                        </SelectItem>
-                      ))}
+                    {getSubgrupos().map((subgrupo) => (
+                      <SelectItem key={subgrupo} value={subgrupo}>
+                        {subgrupo}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -393,17 +419,17 @@ export default function RegistroForm() {
                   value={formData.classificacao_id}
                   onValueChange={(value) => handleSelectChange("classificacao_id", value)}
                   required
+                  disabled={!formData.classificacao_subgrupo}
                 >
                   <SelectTrigger>
                     <SelectValue placeholder="Selecione a classificação" />
                   </SelectTrigger>
                   <SelectContent>
-                    {formData.classificacao_subgrupo &&
-                      classificacoes[formData.classificacao_grupo][formData.classificacao_subgrupo].map((id) => (
-                        <SelectItem key={id} value={id}>
-                          {id}
-                        </SelectItem>
-                      ))}
+                    {getClassificacaoIds().map((id) => (
+                      <SelectItem key={id} value={id.toString()}>
+                        {id}
+                      </SelectItem>
+                    ))}
                   </SelectContent>
                 </Select>
               </div>
@@ -470,11 +496,6 @@ export default function RegistroForm() {
           </form>
         </CardContent>
       </Card>
-
-      {/* Modal de Importação */}
-      {showImportacao && (
-        <ImportacaoLote onClose={() => setShowImportacao(false)} onSuccess={handleImportacaoSuccess} />
-      )}
     </div>
   )
 }

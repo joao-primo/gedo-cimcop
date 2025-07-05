@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
 import { dashboardAPI, pesquisaAPI } from "../services/api"
@@ -32,7 +34,7 @@ import {
   PointElement,
   LineElement,
 } from "chart.js"
-import { Bar, Line } from "react-chartjs-2"
+import { Bar, Line, Doughnut } from "react-chartjs-2"
 
 // Registrar componentes do Chart.js
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend, ArcElement, PointElement, LineElement)
@@ -285,42 +287,35 @@ const Dashboard = () => {
       labels: registrosPorClassificacao.map((item) => item.grupo || "Sem classificação"),
       datasets: [
         {
-          label: "Registros",
           data: registrosPorClassificacao.map((item) => item.count || 0),
           backgroundColor: gerarGradienteAzul(registrosPorClassificacao),
-          borderWidth: 0,
-          borderRadius: 4,
+          borderWidth: 2,
+          borderColor: "#ffffff",
         },
       ],
     },
     options: {
-      indexAxis: "y",
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
         legend: {
-          display: false,
-        },
-        title: {
-          display: false,
+          position: "bottom",
+          labels: {
+            padding: 20,
+            usePointStyle: true,
+            font: {
+              size: 11,
+            },
+          },
         },
         tooltip: {
           callbacks: {
-            label: (context) => `${context.parsed.x} registros`,
-          },
-        },
-      },
-      scales: {
-        x: {
-          beginAtZero: true,
-          ticks: {
-            stepSize: 1,
-          },
-        },
-        y: {
-          ticks: {
-            font: {
-              size: 11,
+            label: (context) => {
+              const label = context.label || ""
+              const value = context.parsed || 0
+              const total = context.dataset.data.reduce((a, b) => a + b, 0)
+              const percentage = total > 0 ? ((value / total) * 100).toFixed(1) : 0
+              return `${label}: ${value} registros (${percentage}%)`
             },
           },
         },
@@ -618,8 +613,8 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Gráficos */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      {/* Gráficos - Agora com 3 gráficos do mesmo tamanho */}
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Gráfico de Timeline */}
         <Card>
           <CardHeader>
@@ -650,67 +645,67 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico de Tipos - Top 10 com gradiente baseado em valores */}
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
-              Top 10 Tipos de Registro
-            </CardTitle>
-            <CardDescription>Os 10 tipos com mais registros</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {registrosPorTipo.length > 0 ? (
-              <div className="h-96">
-                <Bar {...graficoTiposConfig} />
+        {/* Gráfico de Obras - Agora menor */}
+        {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <Building2 className="h-5 w-5 mr-2 text-blue-600" />
+                Registros por Obra
+              </CardTitle>
+              <CardDescription>Distribuição de registros entre as obras</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80">
+                <Bar {...graficoObrasConfig} />
               </div>
-            ) : (
-              <div className="h-96 flex items-center justify-center text-gray-500">
-                <div className="text-center">
-                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                  <p>Nenhum dado disponível</p>
-                </div>
+            </CardContent>
+          </Card>
+        )}
+
+        {/* Novo Gráfico de Classificações - Doughnut */}
+        {registrosPorClassificacao.length > 0 && (
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center">
+                <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+                Registros por Classificação
+              </CardTitle>
+              <CardDescription>Distribuição por grupos de classificação</CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="h-80">
+                <Doughnut {...graficoClassificacaoConfig} />
               </div>
-            )}
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
-      {/* Gráfico de Classificações */}
-      {registrosPorClassificacao.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
-              Top 8 Classificações
-            </CardTitle>
-            <CardDescription>Distribuição de registros por grupo de classificação</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-80">
-              <Bar {...graficoClassificacaoConfig} />
+      {/* Gráfico de Tipos - Agora em linha separada */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center">
+            <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+            Top 10 Tipos de Registro
+          </CardTitle>
+          <CardDescription>Os 10 tipos com mais registros</CardDescription>
+        </CardHeader>
+        <CardContent>
+          {registrosPorTipo.length > 0 ? (
+            <div className="h-96">
+              <Bar {...graficoTiposConfig} />
             </div>
-          </CardContent>
-        </Card>
-      )}
-
-      {/* Gráfico de Obras - Agora com barras menores */}
-      {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Building2 className="h-5 w-5 mr-2 text-blue-600" />
-              Registros por Obra
-            </CardTitle>
-            <CardDescription>Distribuição de registros entre as obras</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="h-64">
-              <Bar {...graficoObrasConfig} />
+          ) : (
+            <div className="h-96 flex items-center justify-center text-gray-500">
+              <div className="text-center">
+                <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                <p>Nenhum dado disponível</p>
+              </div>
             </div>
-          </CardContent>
-        </Card>
-      )}
+          )}
+        </CardContent>
+      </Card>
 
       {/* Atividades Recentes - Agora 5 em vez de 8 */}
       <Card>
