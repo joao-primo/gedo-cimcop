@@ -163,8 +163,25 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
     }
   }
 
-  const handleClose = () => {
-    if (onClose) {
+  // CORRIGIDO: Função de fechamento mais robusta
+  const handleClose = (e) => {
+    e?.preventDefault()
+    e?.stopPropagation()
+
+    console.log("Tentando fechar modal de importação...")
+
+    // Resetar estados
+    setEtapa(1)
+    setArquivo(null)
+    setRegistrosProcessados([])
+    setErros([])
+    setEstatisticas({})
+    setMensagem({ tipo: "", texto: "" })
+    setProgresso(0)
+    setLoading(false)
+
+    // Chamar função de fechamento
+    if (typeof onClose === "function") {
       onClose()
     }
   }
@@ -255,8 +272,15 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
             <h2 className="text-2xl font-bold text-gray-900">Importação em Lote</h2>
             <p className="text-gray-600">Importe múltiplos registros via planilha</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleClose} className="hover:bg-gray-100">
-            <X className="h-4 w-4" />
+          {/* CORRIGIDO: Botão X com melhor funcionalidade */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClose}
+            className="hover:bg-gray-100 p-2 rounded-full"
+            type="button"
+          >
+            <X className="h-5 w-5 text-gray-600 hover:text-gray-800" />
           </Button>
         </div>
 
