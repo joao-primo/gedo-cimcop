@@ -163,8 +163,22 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
     }
   }
 
-  const handleClose = () => {
-    if (onClose) {
+  // CORRIGIDO: Função para fechar o modal
+  const handleClose = (e) => {
+    // Prevenir propagação do evento se necessário
+    if (e) {
+      e.preventDefault()
+      e.stopPropagation()
+    }
+
+    // Confirmar se o usuário realmente quer sair
+    if (etapa > 1 && !loading) {
+      const confirmar = window.confirm("Tem certeza que deseja sair? O progresso será perdido.")
+      if (!confirmar) return
+    }
+
+    // Chamar a função de fechamento
+    if (onClose && typeof onClose === "function") {
       onClose()
     }
   }
@@ -248,15 +262,23 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
   }
 
   return (
-    <div className="fixed inset-0 bg-white bg-opacity-95 flex items-center justify-center z-50 p-4">
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-lg shadow-2xl border border-gray-200 max-w-6xl w-full max-h-[90vh] overflow-hidden">
         <div className="flex justify-between items-center p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
           <div>
             <h2 className="text-2xl font-bold text-gray-900">Importação em Lote</h2>
             <p className="text-gray-600">Importe múltiplos registros via planilha</p>
           </div>
-          <Button variant="ghost" size="sm" onClick={handleClose} className="hover:bg-gray-100">
-            <X className="h-4 w-4" />
+          {/* CORRIGIDO: Botão X funcional */}
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={handleClose}
+            className="hover:bg-gray-100 p-2"
+            disabled={loading}
+            type="button"
+          >
+            <X className="h-5 w-5" />
           </Button>
         </div>
 

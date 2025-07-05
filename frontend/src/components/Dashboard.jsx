@@ -87,9 +87,10 @@ const Dashboard = () => {
       console.log("Carregando dados do dashboard...", obraId ? `para obra ${obraId}` : "todas as obras")
       setDados((prev) => ({ ...prev, loading: true, error: "" }))
 
-      // Preparar parâmetros para as APIs
-      const timelineParams = obraId ? `30&obra_id=${obraId}` : "30"
-      const estatisticasParams = obraId ? { obra_id: obraId } : {}
+      // Preparar parâmetros para as APIs - CORRIGIDO
+      const timelineParams = obraId && obraId !== "todas" ? `30&obra_id=${obraId}` : "30"
+      const estatisticasParams = obraId && obraId !== "todas" ? { obra_id: obraId } : {}
+      const atividadesObraId = obraId && obraId !== "todas" ? obraId : null
 
       // Carregar dados em paralelo
       const promises = [
@@ -97,7 +98,7 @@ const Dashboard = () => {
           console.error("Erro ao carregar estatísticas:", err)
           return { data: {} }
         }),
-        dashboardAPI.getAtividadesRecentes(5, obraId).catch((err) => {
+        dashboardAPI.getAtividadesRecentes(5, atividadesObraId).catch((err) => {
           console.error("Erro ao carregar atividades:", err)
           return { data: { atividades_recentes: [] } }
         }),
@@ -176,6 +177,7 @@ const Dashboard = () => {
   const handleObraChange = (value) => {
     console.log("Obra selecionada:", value)
     setObraSelecionada(value)
+    // CORRIGIDO: Passar o valor correto para carregarDados
     const obraId = value === "todas" ? null : value
     carregarDados(obraId)
   }

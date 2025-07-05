@@ -215,266 +215,282 @@ export default function RegistroForm() {
 
   if (obraSuspensa) {
     return (
-      <div className="max-w-2xl mx-auto p-6">
-        <Alert className="border-yellow-200 bg-yellow-50">
-          <AlertTriangle className="h-4 w-4 text-yellow-600" />
-          <div className="ml-2">
-            <h3 className="text-lg font-semibold text-yellow-800">Registro Bloqueado</h3>
-            <p className="text-yellow-700 mt-1">
-              A criação de registros está desabilitada porque a obra está <strong>suspensa</strong>.
-            </p>
-          </div>
-        </Alert>
+      <div className="min-h-screen bg-gray-50 py-12 px-4 sm:px-6 lg:px-8">
+        <div className="max-w-3xl mx-auto">
+          <Alert className="border-yellow-200 bg-yellow-50">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <div className="ml-2">
+              <h3 className="text-lg font-semibold text-yellow-800">Registro Bloqueado</h3>
+              <p className="text-yellow-700 mt-1">
+                A criação de registros está desabilitada porque a obra está <strong>suspensa</strong>.
+              </p>
+            </div>
+          </Alert>
+        </div>
       </div>
     )
   }
 
   return (
-    <div className="max-w-4xl mx-auto p-6">
-      {/* Header */}
-      <div className="mb-6">
-        <h1 className="text-3xl font-bold text-gray-900">Novo Registro</h1>
-        <p className="text-gray-600">Crie um novo registro de documento</p>
-      </div>
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <h1 className="text-3xl font-bold text-gray-900">Novo Registro</h1>
+          <p className="text-gray-600 mt-2">Crie um novo registro de documento</p>
+        </div>
 
-      <Card>
-        <CardHeader>
-          <div className="flex items-center space-x-2">
-            <FileText className="h-6 w-6 text-blue-600" />
-            <div>
-              <CardTitle className="text-2xl">Novo Registro</CardTitle>
-              <CardDescription>Preencha os dados para criar um novo registro de documento</CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-
-        <CardContent>
-          {mensagem.texto && (
-            <Alert
-              className={`mb-6 ${
-                mensagem.tipo === "success" ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"
-              }`}
-            >
-              {mensagem.tipo === "success" ? (
-                <CheckCircle className="h-4 w-4 text-green-600" />
-              ) : (
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-              )}
-              <AlertDescription className={mensagem.tipo === "success" ? "text-green-700" : "text-red-700"}>
-                {mensagem.texto}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          <form onSubmit={handleSubmit} className="space-y-6">
-            {/* Obra Selection (Admin only) */}
-            {user?.role === "administrador" && (
-              <div className="space-y-2">
-                <Label className="flex items-center space-x-2">
-                  <Building2 className="h-4 w-4" />
-                  <span>Obra *</span>
-                </Label>
-                <Select
-                  value={formData.obra_id}
-                  onValueChange={(value) => handleSelectChange("obra_id", value)}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a obra" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {obras.map((obra) => (
-                      <SelectItem key={obra.id} value={obra.id.toString()}>
-                        <div className="flex items-center space-x-2">
-                          <Badge variant="outline">{obra.codigo}</Badge>
-                          <span>{obra.nome}</span>
-                        </div>
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+        <Card className="shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+            <div className="flex items-center space-x-3">
+              <div className="p-2 bg-blue-100 rounded-full">
+                <FileText className="h-6 w-6 text-blue-600" />
               </div>
+              <div>
+                <CardTitle className="text-2xl text-gray-900">Novo Registro</CardTitle>
+                <CardDescription className="text-gray-600 mt-1">
+                  Preencha os dados para criar um novo registro de documento
+                </CardDescription>
+              </div>
+            </div>
+          </CardHeader>
+
+          <CardContent className="p-8">
+            {mensagem.texto && (
+              <Alert
+                className={`mb-8 ${
+                  mensagem.tipo === "success" ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"
+                }`}
+              >
+                {mensagem.tipo === "success" ? (
+                  <CheckCircle className="h-4 w-4 text-green-600" />
+                ) : (
+                  <AlertTriangle className="h-4 w-4 text-red-600" />
+                )}
+                <AlertDescription className={mensagem.tipo === "success" ? "text-green-700" : "text-red-700"}>
+                  {mensagem.texto}
+                </AlertDescription>
+              </Alert>
             )}
 
-            {/* Grid Layout for Form Fields */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Título */}
-              <div className="space-y-2">
-                <Label htmlFor="titulo">Título *</Label>
-                <Input
-                  id="titulo"
-                  name="titulo"
-                  value={formData.titulo}
-                  onChange={handleChange}
-                  placeholder="Digite o título do registro"
-                  required
-                />
+            <form onSubmit={handleSubmit} className="space-y-8">
+              {/* Obra Selection (Admin only) */}
+              {user?.role === "administrador" && (
+                <div className="space-y-3">
+                  <Label className="flex items-center space-x-2 text-base font-medium">
+                    <Building2 className="h-5 w-5" />
+                    <span>Obra *</span>
+                  </Label>
+                  <Select
+                    value={formData.obra_id}
+                    onValueChange={(value) => handleSelectChange("obra_id", value)}
+                    required
+                  >
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder="Selecione a obra" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {obras.map((obra) => (
+                        <SelectItem key={obra.id} value={obra.id.toString()}>
+                          <div className="flex items-center space-x-2">
+                            <Badge variant="outline">{obra.codigo}</Badge>
+                            <span>{obra.nome}</span>
+                          </div>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+
+              {/* Grid Layout for Form Fields */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Título */}
+                <div className="space-y-3">
+                  <Label htmlFor="titulo" className="text-base font-medium">
+                    Título *
+                  </Label>
+                  <Input
+                    id="titulo"
+                    name="titulo"
+                    value={formData.titulo}
+                    onChange={handleChange}
+                    placeholder="Digite o título do registro"
+                    required
+                    className="h-12"
+                  />
+                </div>
+
+                {/* Tipo de Registro */}
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Tipo de Registro *</Label>
+                  <Select value={formData.tipo_registro_id} onValueChange={handleTipoRegistroChange} required>
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder={tipos.length === 0 ? "Nenhum tipo disponível" : "Selecione o tipo"} />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {tipos.length === 0 ? (
+                        <div className="p-2 text-sm text-gray-500 text-center">Nenhum tipo de registro disponível</div>
+                      ) : (
+                        tipos
+                          .filter((tipo) => tipo && tipo.id && tipo.nome)
+                          .map((tipo) => {
+                            return (
+                              <SelectItem key={tipo.id} value={tipo.id.toString()}>
+                                {tipo.nome}
+                              </SelectItem>
+                            )
+                          })
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {tipos.length === 0 && <p className="text-sm text-red-600">⚠️ Nenhum tipo de registro encontrado</p>}
+                </div>
+
+                {/* Data do Registro */}
+                <div className="space-y-3">
+                  <Label className="flex items-center space-x-2 text-base font-medium">
+                    <Calendar className="h-5 w-5" />
+                    <span>Data do Registro *</span>
+                  </Label>
+                  <Input
+                    type="date"
+                    name="data_registro"
+                    value={formData.data_registro}
+                    onChange={handleChange}
+                    required
+                    className="h-12"
+                  />
+                </div>
+
+                {/* Código/Número */}
+                <div className="space-y-3">
+                  <Label className="flex items-center space-x-2 text-base font-medium">
+                    <Hash className="h-5 w-5" />
+                    <span>Código/Número *</span>
+                  </Label>
+                  <Input
+                    name="codigo_numero"
+                    value={formData.codigo_numero}
+                    onChange={handleChange}
+                    placeholder="Ex: DOC-001, REG-2024-001"
+                    required
+                    className="h-12"
+                  />
+                </div>
               </div>
 
-              {/* Tipo de Registro */}
-              <div className="space-y-2">
-                <Label>Tipo de Registro *</Label>
-                <Select value={formData.tipo_registro_id} onValueChange={handleTipoRegistroChange} required>
-                  <SelectTrigger className="w-full">
-                    <SelectValue placeholder={tipos.length === 0 ? "Nenhum tipo disponível" : "Selecione o tipo"} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tipos.length === 0 ? (
-                      <div className="p-2 text-sm text-gray-500 text-center">Nenhum tipo de registro disponível</div>
-                    ) : (
-                      tipos
-                        .filter((tipo) => tipo && tipo.id && tipo.nome)
-                        .map((tipo) => {
-                          return (
-                            <SelectItem key={tipo.id} value={tipo.id.toString()}>
-                              {tipo.nome}
-                            </SelectItem>
-                          )
-                        })
-                    )}
-                  </SelectContent>
-                </Select>
-                {tipos.length === 0 && <p className="text-sm text-red-600">⚠️ Nenhum tipo de registro encontrado</p>}
+              {/* Classificação */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+                {/* Classificação Grupo */}
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Classificação Grupo *</Label>
+                  <Select
+                    value={formData.classificacao_grupo}
+                    onValueChange={(value) => handleSelectChange("classificacao_grupo", value)}
+                    required
+                  >
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder="Selecione o grupo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {Object.keys(classificacoes).map((grupo) => (
+                        <SelectItem key={grupo} value={grupo}>
+                          {grupo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                {/* Classificação Subgrupo */}
+                <div className="space-y-3">
+                  <Label className="text-base font-medium">Classificação Subgrupo *</Label>
+                  <Select
+                    value={formData.classificacao_subgrupo}
+                    onValueChange={(value) => handleSelectChange("classificacao_subgrupo", value)}
+                    required
+                    disabled={!formData.classificacao_grupo}
+                  >
+                    <SelectTrigger className="h-12">
+                      <SelectValue placeholder="Selecione o subgrupo" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {getSubgrupos().map((subgrupo) => (
+                        <SelectItem key={subgrupo} value={subgrupo}>
+                          {subgrupo}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
               </div>
 
-              {/* Data do Registro */}
-              <div className="space-y-2">
-                <Label className="flex items-center space-x-2">
-                  <Calendar className="h-4 w-4" />
-                  <span>Data do Registro *</span>
+              {/* Descrição */}
+              <div className="space-y-3">
+                <Label htmlFor="descricao" className="text-base font-medium">
+                  Descrição Detalhada *
                 </Label>
-                <Input
-                  type="date"
-                  name="data_registro"
-                  value={formData.data_registro}
+                <Textarea
+                  id="descricao"
+                  name="descricao"
+                  value={formData.descricao}
                   onChange={handleChange}
+                  rows={5}
+                  placeholder="Descreva detalhadamente o conteúdo do registro..."
                   required
+                  className="resize-none"
                 />
               </div>
 
-              {/* Código/Número */}
-              <div className="space-y-2">
-                <Label className="flex items-center space-x-2">
-                  <Hash className="h-4 w-4" />
-                  <span>Código/Número *</span>
+              {/* Anexo */}
+              <div className="space-y-3">
+                <Label className="flex items-center space-x-2 text-base font-medium">
+                  <Upload className="h-5 w-5" />
+                  <span>Anexo</span>
                 </Label>
-                <Input
-                  name="codigo_numero"
-                  value={formData.codigo_numero}
-                  onChange={handleChange}
-                  placeholder="Ex: DOC-001, REG-2024-001"
-                  required
-                />
-              </div>
-            </div>
-
-            {/* Classificação */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-              {/* Classificação Grupo */}
-              <div className="space-y-2">
-                <Label>Classificação Grupo *</Label>
-                <Select
-                  value={formData.classificacao_grupo}
-                  onValueChange={(value) => handleSelectChange("classificacao_grupo", value)}
-                  required
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o grupo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {Object.keys(classificacoes).map((grupo) => (
-                      <SelectItem key={grupo} value={grupo}>
-                        {grupo}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-gray-400 transition-colors">
+                  <input
+                    type="file"
+                    name="anexo"
+                    onChange={handleChange}
+                    className="w-full text-sm text-gray-600 file:mr-4 file:py-3 file:px-6 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                  />
+                  {formData.anexo && (
+                    <div className="mt-3 flex items-center space-x-2 text-sm text-gray-600">
+                      <CheckCircle className="h-4 w-4 text-green-500" />
+                      <span>Arquivo selecionado: {formData.anexo.name}</span>
+                    </div>
+                  )}
+                  <p className="text-xs text-gray-500 mt-3">
+                    Tipos aceitos: PDF, DOC, DOCX, XLS, XLSX, TXT, PNG, JPG, JPEG, GIF
+                  </p>
+                </div>
               </div>
 
-              {/* Classificação Subgrupo */}
-              <div className="space-y-2">
-                <Label>Classificação Subgrupo *</Label>
-                <Select
-                  value={formData.classificacao_subgrupo}
-                  onValueChange={(value) => handleSelectChange("classificacao_subgrupo", value)}
-                  required
-                  disabled={!formData.classificacao_grupo}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione o subgrupo" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getSubgrupos().map((subgrupo) => (
-                      <SelectItem key={subgrupo} value={subgrupo}>
-                        {subgrupo}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+              {/* Submit Button */}
+              <div className="flex justify-end space-x-4 pt-8 border-t">
+                <Button type="button" variant="outline" onClick={() => window.history.back()} className="px-8 py-3">
+                  Cancelar
+                </Button>
+                <Button type="submit" disabled={loading || !formData.tipo_registro_id} className="px-8 py-3">
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      Salvando...
+                    </>
+                  ) : (
+                    <>
+                      <FileText className="mr-2 h-4 w-4" />
+                      Salvar Registro
+                    </>
+                  )}
+                </Button>
               </div>
-            </div>
-
-            {/* Descrição */}
-            <div className="space-y-2">
-              <Label htmlFor="descricao">Descrição Detalhada *</Label>
-              <Textarea
-                id="descricao"
-                name="descricao"
-                value={formData.descricao}
-                onChange={handleChange}
-                rows={4}
-                placeholder="Descreva detalhadamente o conteúdo do registro..."
-                required
-              />
-            </div>
-
-            {/* Anexo */}
-            <div className="space-y-2">
-              <Label className="flex items-center space-x-2">
-                <Upload className="h-4 w-4" />
-                <span>Anexo</span>
-              </Label>
-              <div className="border-2 border-dashed border-gray-300 rounded-lg p-6 hover:border-gray-400 transition-colors">
-                <input
-                  type="file"
-                  name="anexo"
-                  onChange={handleChange}
-                  className="w-full text-sm text-gray-600 file:mr-4 file:py-2 file:px-4 file:rounded-md file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                />
-                {formData.anexo && (
-                  <div className="mt-2 flex items-center space-x-2 text-sm text-gray-600">
-                    <CheckCircle className="h-4 w-4 text-green-500" />
-                    <span>Arquivo selecionado: {formData.anexo.name}</span>
-                  </div>
-                )}
-                <p className="text-xs text-gray-500 mt-2">
-                  Tipos aceitos: PDF, DOC, DOCX, XLS, XLSX, TXT, PNG, JPG, JPEG, GIF
-                </p>
-              </div>
-            </div>
-
-            {/* Submit Button */}
-            <div className="flex justify-end space-x-4 pt-6 border-t">
-              <Button type="button" variant="outline" onClick={() => window.history.back()}>
-                Cancelar
-              </Button>
-              <Button type="submit" disabled={loading || !formData.tipo_registro_id}>
-                {loading ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Salvando...
-                  </>
-                ) : (
-                  <>
-                    <FileText className="mr-2 h-4 w-4" />
-                    Salvar Registro
-                  </>
-                )}
-              </Button>
-            </div>
-          </form>
-        </CardContent>
-      </Card>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   )
 }

@@ -331,14 +331,14 @@ const Pesquisa = () => {
   }
 
   return (
-    <div className="p-6 bg-gray-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
-        <div className="flex items-center justify-between mb-6">
+    <div className="min-h-screen bg-gray-50 py-6">
+      <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+        <div className="flex items-center justify-between mb-8">
           <div>
             <h2 className="text-3xl font-bold text-gray-800">Pesquisa Avançada</h2>
-            <p className="text-gray-600 mt-1">Encontre registros usando filtros personalizados</p>
+            <p className="text-gray-600 mt-2">Encontre registros usando filtros personalizados</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-3">
             <Button onClick={handleExportExcel} disabled={exportingExcel || registros.length === 0} variant="outline">
               {exportingExcel ? (
                 <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
@@ -370,33 +370,38 @@ const Pesquisa = () => {
         )}
 
         {/* Filtros de Pesquisa */}
-        <Card className="mb-6">
-          <CardHeader>
-            <CardTitle className="flex items-center">
-              <Search className="h-5 w-5 mr-2" />
+        <Card className="mb-8 shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+            <CardTitle className="flex items-center text-xl">
+              <Search className="h-5 w-5 mr-3" />
               Filtros de Pesquisa
             </CardTitle>
-            <CardDescription>Use os filtros abaixo para refinar sua pesquisa</CardDescription>
+            <CardDescription className="mt-2">Use os filtros abaixo para refinar sua pesquisa</CardDescription>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6">
             {/* Primeira linha de filtros */}
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4 mb-4">
-              <div>
-                <Label htmlFor="data_registro_inicio">Data do Registro (a partir de)</Label>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-6">
+              <div className="space-y-3">
+                <Label htmlFor="data_registro_inicio" className="text-sm font-medium text-gray-700">
+                  Data do Registro (a partir de)
+                </Label>
                 <Input
                   id="data_registro_inicio"
                   name="data_registro_inicio"
                   type="date"
                   value={form.data_registro_inicio}
                   onChange={handleInputChange}
+                  className="h-11"
                 />
               </div>
 
               {isAdmin() && (
-                <div>
-                  <Label htmlFor="obra_id">Obra</Label>
+                <div className="space-y-3">
+                  <Label htmlFor="obra_id" className="text-sm font-medium text-gray-700">
+                    Obra
+                  </Label>
                   <Select value={form.obra_id} onValueChange={(value) => handleChange("obra_id", value)}>
-                    <SelectTrigger>
+                    <SelectTrigger className="h-11">
                       <SelectValue placeholder="Selecione uma obra" />
                     </SelectTrigger>
                     <SelectContent>
@@ -411,13 +416,15 @@ const Pesquisa = () => {
                 </div>
               )}
 
-              <div>
-                <Label htmlFor="tipo_registro_id">Tipo de Registro</Label>
+              <div className="space-y-3">
+                <Label htmlFor="tipo_registro_id" className="text-sm font-medium text-gray-700">
+                  Tipo de Registro
+                </Label>
                 <Select
                   value={form.tipo_registro_id}
                   onValueChange={(value) => handleChange("tipo_registro_id", value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Selecione um tipo" />
                   </SelectTrigger>
                   <SelectContent>
@@ -431,13 +438,15 @@ const Pesquisa = () => {
                 </Select>
               </div>
 
-              <div>
-                <Label htmlFor="classificacao_grupo">Classificação</Label>
+              <div className="space-y-3">
+                <Label htmlFor="classificacao_grupo" className="text-sm font-medium text-gray-700">
+                  Classificação
+                </Label>
                 <Select
                   value={form.classificacao_grupo}
                   onValueChange={(value) => handleChange("classificacao_grupo", value)}
                 >
-                  <SelectTrigger>
+                  <SelectTrigger className="h-11">
                     <SelectValue placeholder="Selecione uma classificação" />
                   </SelectTrigger>
                   <SelectContent>
@@ -453,24 +462,27 @@ const Pesquisa = () => {
             </div>
 
             {/* Segunda linha - Palavra-chave */}
-            <div className="mb-4">
-              <Label htmlFor="palavra_chave">Palavra-chave</Label>
+            <div className="mb-6 space-y-3">
+              <Label htmlFor="palavra_chave" className="text-sm font-medium text-gray-700">
+                Palavra-chave
+              </Label>
               <Input
                 id="palavra_chave"
                 name="palavra_chave"
                 placeholder="Buscar em título, descrição..."
                 value={form.palavra_chave}
                 onChange={handleInputChange}
+                className="h-11"
               />
             </div>
 
             {/* Botões */}
-            <div className="flex gap-2">
-              <Button onClick={handleSearch} disabled={loading}>
+            <div className="flex gap-3">
+              <Button onClick={handleSearch} disabled={loading} className="px-6">
                 {loading ? <RefreshCw className="h-4 w-4 mr-2 animate-spin" /> : <Search className="h-4 w-4 mr-2" />}
                 Pesquisar
               </Button>
-              <Button onClick={handleClear} variant="outline">
+              <Button onClick={handleClear} variant="outline" className="px-6 bg-transparent">
                 Limpar Filtros
               </Button>
             </div>
@@ -478,15 +490,15 @@ const Pesquisa = () => {
         </Card>
 
         {/* Resultados */}
-        <Card>
-          <CardHeader>
+        <Card className="shadow-lg">
+          <CardHeader className="bg-gradient-to-r from-gray-50 to-gray-100 border-b">
             <div className="flex items-center justify-between">
               <div>
-                <CardTitle className="flex items-center">
-                  <FileText className="h-5 w-5 mr-2" />
+                <CardTitle className="flex items-center text-xl">
+                  <FileText className="h-5 w-5 mr-3" />
                   Resultados da Pesquisa
                 </CardTitle>
-                <CardDescription>
+                <CardDescription className="mt-2">
                   {pagination.total > 0
                     ? `${pagination.total} registro${pagination.total !== 1 ? "s" : ""} encontrado${
                         pagination.total !== 1 ? "s" : ""
@@ -495,22 +507,22 @@ const Pesquisa = () => {
                 </CardDescription>
               </div>
               {pagination.total > 0 && (
-                <Badge variant="secondary">
+                <Badge variant="secondary" className="px-3 py-1">
                   Página {pagination.page} de {pagination.pages}
                 </Badge>
               )}
             </div>
           </CardHeader>
-          <CardContent>
+          <CardContent className="p-6">
             {loading ? (
-              <div className="flex items-center justify-center py-12">
+              <div className="flex items-center justify-center py-16">
                 <div className="text-center">
                   <RefreshCw className="h-12 w-12 animate-spin text-blue-600 mx-auto mb-4" />
                   <p className="text-gray-600">Carregando registros...</p>
                 </div>
               </div>
             ) : registros.length === 0 ? (
-              <div className="text-center py-12">
+              <div className="text-center py-16">
                 <Search className="h-16 w-16 text-gray-300 mx-auto mb-4" />
                 <h3 className="text-lg font-medium text-gray-900 mb-2">Nenhum registro encontrado</h3>
                 <p className="text-gray-600">Tente ajustar os filtros de pesquisa</p>
@@ -521,60 +533,60 @@ const Pesquisa = () => {
                   <Table>
                     <TableHeader>
                       <TableRow>
-                        <TableHead>Título</TableHead>
-                        <TableHead>Tipo</TableHead>
-                        <TableHead>Classificação</TableHead>
-                        <TableHead>Data</TableHead>
-                        {isAdmin() && <TableHead>Obra</TableHead>}
-                        <TableHead>Autor</TableHead>
-                        <TableHead>Anexo</TableHead>
-                        <TableHead className="text-right">Ações</TableHead>
+                        <TableHead className="font-semibold">Título</TableHead>
+                        <TableHead className="font-semibold">Tipo</TableHead>
+                        <TableHead className="font-semibold">Classificação</TableHead>
+                        <TableHead className="font-semibold">Data</TableHead>
+                        {isAdmin() && <TableHead className="font-semibold">Obra</TableHead>}
+                        <TableHead className="font-semibold">Autor</TableHead>
+                        <TableHead className="font-semibold">Anexo</TableHead>
+                        <TableHead className="text-right font-semibold">Ações</TableHead>
                       </TableRow>
                     </TableHeader>
                     <TableBody>
                       {registros.map((registro) => (
                         <TableRow key={registro.id} className="hover:bg-gray-50">
-                          <TableCell>
+                          <TableCell className="py-4">
                             <div>
                               <div className="font-medium text-gray-900">{registro.titulo}</div>
                               {registro.codigo_numero && (
-                                <div className="text-sm text-gray-500">#{registro.codigo_numero}</div>
+                                <div className="text-sm text-gray-500 mt-1">#{registro.codigo_numero}</div>
                               )}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-4">
                             <Badge variant="secondary">{registro.tipo_registro}</Badge>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-4">
                             {registro.classificacao_grupo ? (
                               <div className="text-sm">
                                 <div className="font-medium text-gray-900">{registro.classificacao_grupo}</div>
-                                <div className="text-gray-500">{registro.classificacao_subgrupo}</div>
+                                <div className="text-gray-500 mt-1">{registro.classificacao_subgrupo}</div>
                               </div>
                             ) : (
                               <span className="text-gray-400">—</span>
                             )}
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-4">
                             <div className="text-sm">
                               <div>{formatDate(registro.data_registro)}</div>
                             </div>
                           </TableCell>
                           {isAdmin() && (
-                            <TableCell>
+                            <TableCell className="py-4">
                               <div className="flex items-center text-sm">
-                                <Building2 className="h-3 w-3 mr-1 text-gray-400" />
+                                <Building2 className="h-3 w-3 mr-2 text-gray-400" />
                                 Obra #{registro.obra_id}
                               </div>
                             </TableCell>
                           )}
-                          <TableCell>
+                          <TableCell className="py-4">
                             <div className="flex items-center text-sm">
-                              <User className="h-3 w-3 mr-1 text-gray-400" />
+                              <User className="h-3 w-3 mr-2 text-gray-400" />
                               {registro.autor_nome}
                             </div>
                           </TableCell>
-                          <TableCell>
+                          <TableCell className="py-4">
                             {registro.anexo_url ? (
                               <Badge variant="outline" className="text-green-600 border-green-200">
                                 <FileText className="h-3 w-3 mr-1" />
@@ -586,14 +598,15 @@ const Pesquisa = () => {
                               </Badge>
                             )}
                           </TableCell>
-                          <TableCell className="text-right">
-                            <div className="flex items-center justify-end gap-1">
+                          <TableCell className="text-right py-4">
+                            <div className="flex items-center justify-end gap-2">
                               <Button
                                 size="sm"
                                 variant="ghost"
                                 onClick={() => handleVisualizarRegistro(registro.id)}
                                 disabled={loadingVisualizacao}
                                 title="Visualizar registro completo"
+                                className="h-8 w-8 p-0"
                               >
                                 <Eye className="h-4 w-4" />
                               </Button>
@@ -604,6 +617,7 @@ const Pesquisa = () => {
                                   onClick={() => handleDownload(registro.id, registro.nome_arquivo_original)}
                                   disabled={downloadingId === registro.id}
                                   title="Baixar anexo"
+                                  className="h-8 w-8 p-0"
                                 >
                                   {downloadingId === registro.id ? (
                                     <RefreshCw className="h-4 w-4 animate-spin" />
@@ -618,7 +632,7 @@ const Pesquisa = () => {
                                   variant="ghost"
                                   onClick={() => handleDelete(registro)}
                                   disabled={deletingId === registro.id}
-                                  className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                                  className="text-red-600 hover:text-red-700 hover:bg-red-50 h-8 w-8 p-0"
                                   title="Excluir registro"
                                 >
                                   {deletingId === registro.id ? (
@@ -638,23 +652,24 @@ const Pesquisa = () => {
 
                 {/* Paginação */}
                 {pagination.pages > 1 && (
-                  <div className="flex items-center justify-between mt-6">
+                  <div className="flex items-center justify-between mt-8 pt-6 border-t">
                     <div className="text-sm text-gray-600">
                       Mostrando {(pagination.page - 1) * pagination.per_page + 1} a{" "}
                       {Math.min(pagination.page * pagination.per_page, pagination.total)} de {pagination.total}{" "}
                       registros
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-3">
                       <Button
                         variant="outline"
                         size="sm"
                         onClick={() => handlePageChange(pagination.page - 1)}
                         disabled={!pagination.has_prev}
+                        className="px-4"
                       >
-                        <ChevronLeft className="h-4 w-4" />
+                        <ChevronLeft className="h-4 w-4 mr-1" />
                         Anterior
                       </Button>
-                      <span className="text-sm text-gray-600">
+                      <span className="text-sm text-gray-600 px-3">
                         Página {pagination.page} de {pagination.pages}
                       </span>
                       <Button
@@ -662,9 +677,10 @@ const Pesquisa = () => {
                         size="sm"
                         onClick={() => handlePageChange(pagination.page + 1)}
                         disabled={!pagination.has_next}
+                        className="px-4"
                       >
                         Próxima
-                        <ChevronRight className="h-4 w-4" />
+                        <ChevronRight className="h-4 w-4 ml-1" />
                       </Button>
                     </div>
                   </div>
