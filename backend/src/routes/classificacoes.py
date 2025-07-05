@@ -1,6 +1,7 @@
 from flask import Blueprint, request, jsonify
 from models.classificacao import Classificacao, db
-from routes.auth import token_required, admin_required
+from routes.auth import token_required
+from sqlalchemy import or_
 
 classificacoes_bp = Blueprint('classificacoes', __name__)
 
@@ -9,11 +10,30 @@ classificacoes_bp = Blueprint('classificacoes', __name__)
 @token_required
 def listar_classificacoes(current_user):
     try:
-        classificacoes = Classificacao.get_classificacoes_agrupadas()
+        # Buscar todas as classificações ativas
+        classificacoes = Classificacao.query.filter_by(ativo=True).order_by(
+            Classificacao.grupo, Classificacao.subgrupo
+        ).all()
+
+        # Organizar por grupo e subgrupo
+        grupos = {}
+        for classificacao in classificacoes:
+            if classificacao.grupo not in grupos:
+                grupos[classificacao.grupo] = {}
+
+            if classificacao.subgrupo not in grupos[classificacao.grupo]:
+                grupos[classificacao.grupo][classificacao.subgrupo] = []
+
+            grupos[classificacao.grupo][classificacao.subgrupo].append({
+                'id': classificacao.id,
+                'subgrupo': classificacao.subgrupo
+            })
+
         return jsonify({
-            'classificacoes': classificacoes,
+            'classificacoes': grupos,
             'total': len(classificacoes)
         }), 200
+
     except Exception as e:
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
@@ -24,57 +44,59 @@ def listar_grupos(current_user):
     try:
         grupos = Classificacao.get_grupos()
         return jsonify({
-            'grupos': grupos,
-            'total': len(grupos)
+            'grupos': grupos
         }), 200
+
     except Exception as e:
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
 @classificacoes_bp.route('/subgrupos/<grupo>', methods=['GET'])
 @token_required
-def listar_subgrupos(current_user, grupo):
+def listar_subgrupos_por_grupo(current_user, grupo):
     try:
         subgrupos = Classificacao.get_subgrupos_por_grupo(grupo)
         return jsonify({
-            'subgrupos': subgrupos,
-            'total': len(subgrupos)
+            'subgrupos': subgrupos
         }), 200
+
     except Exception as e:
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
 @classificacoes_bp.route('/', methods=['POST'])
 @token_required
-@admin_required
 def criar_classificacao(current_user):
     try:
+        if current_user.role != 'administrador':
+            return jsonify({'message': 'Acesso negado'}), 403
+
         data = request.get_json()
 
-        if not data.get('grupo') or not data.get('subgrupo'):
+        if not data or not data.get('grupo') or not data.get('subgrupo'):
             return jsonify({'message': 'Grupo e subgrupo são obrigatórios'}), 400
 
         # Verificar se já existe
-        existente = Classificacao.query.filter_by(
+        classificacao_existente = Classificacao.query.filter_by(
             grupo=data['grupo'],
             subgrupo=data['subgrupo']
         ).first()
 
-        if existente:
+        if classificacao_existente:
             return jsonify({'message': 'Classificação já existe'}), 400
 
-        classificacao = Classificacao(
+        nova_classificacao = Classificacao(
             grupo=data['grupo'],
             subgrupo=data['subgrupo'],
             ativo=data.get('ativo', True)
         )
 
-        db.session.add(classificacao)
+        db.session.add(nova_classificacao)
         db.session.commit()
 
         return jsonify({
             'message': 'Classificação criada com sucesso',
-            'classificacao': classificacao.to_dict()
+            'classificacao': nova_classificacao.to_dict()
         }), 201
 
     except Exception as e:
@@ -84,18 +106,20 @@ def criar_classificacao(current_user):
 
 @classificacoes_bp.route('/<int:classificacao_id>', methods=['PUT'])
 @token_required
-@admin_required
 def atualizar_classificacao(current_user, classificacao_id):
     try:
+        if current_user.role != 'administrador':
+            return jsonify({'message': 'Acesso negado'}), 403
+
         classificacao = Classificacao.query.get(classificacao_id)
         if not classificacao:
             return jsonify({'message': 'Classificação não encontrada'}), 404
 
         data = request.get_json()
 
-        if 'grupo' in data:
+        if data.get('grupo'):
             classificacao.grupo = data['grupo']
-        if 'subgrupo' in data:
+        if data.get('subgrupo'):
             classificacao.subgrupo = data['subgrupo']
         if 'ativo' in data:
             classificacao.ativo = data['ativo']
@@ -114,17 +138,22 @@ def atualizar_classificacao(current_user, classificacao_id):
 
 @classificacoes_bp.route('/<int:classificacao_id>', methods=['DELETE'])
 @token_required
-@admin_required
 def deletar_classificacao(current_user, classificacao_id):
     try:
+        if current_user.role != 'administrador':
+            return jsonify({'message': 'Acesso negado'}), 403
+
         classificacao = Classificacao.query.get(classificacao_id)
         if not classificacao:
             return jsonify({'message': 'Classificação não encontrada'}), 404
 
-        db.session.delete(classificacao)
+        # Soft delete - apenas marcar como inativo
+        classificacao.ativo = False
         db.session.commit()
 
-        return jsonify({'message': 'Classificação deletada com sucesso'}), 200
+        return jsonify({
+            'message': 'Classificação desativada com sucesso'
+        }), 200
 
     except Exception as e:
         db.session.rollback()

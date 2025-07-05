@@ -30,7 +30,6 @@ export default function RegistroForm() {
     obra_id: "",
     classificacao_grupo: "",
     classificacao_subgrupo: "",
-    classificacao_id: "",
   })
   const [mensagem, setMensagem] = useState({ tipo: "", texto: "" })
 
@@ -47,9 +46,32 @@ export default function RegistroForm() {
       const classificacoesRes = await classificacoesAPI.listar()
       console.log("Classificações carregadas:", classificacoesRes.data)
 
-      // Verificar se a resposta tem a estrutura esperada
+      // Processar classificações para estrutura hierárquica
       if (classificacoesRes.data && classificacoesRes.data.classificacoes) {
-        setClassificacoes(classificacoesRes.data.classificacoes)
+        const classificacoesProcessadas = {}
+
+        // Agrupar por grupo e subgrupo
+        Object.entries(classificacoesRes.data.classificacoes).forEach(([grupo, subgrupos]) => {
+          classificacoesProcessadas[grupo] = {}
+
+          if (Array.isArray(subgrupos)) {
+            // Se subgrupos é um array de objetos
+            subgrupos.forEach((item) => {
+              if (item.subgrupo) {
+                if (!classificacoesProcessadas[grupo][item.subgrupo]) {
+                  classificacoesProcessadas[grupo][item.subgrupo] = []
+                }
+                classificacoesProcessadas[grupo][item.subgrupo].push(item.id)
+              }
+            })
+          } else if (typeof subgrupos === "object") {
+            // Se subgrupos já é um objeto estruturado
+            classificacoesProcessadas[grupo] = subgrupos
+          }
+        })
+
+        console.log("Classificações processadas:", classificacoesProcessadas)
+        setClassificacoes(classificacoesProcessadas)
       } else {
         console.warn("Estrutura de classificações inesperada:", classificacoesRes.data)
         setClassificacoes({})
@@ -91,15 +113,9 @@ export default function RegistroForm() {
     setFormData((prev) => {
       const newFormData = { ...prev, [name]: value }
 
-      // Se mudou o grupo de classificação, limpar subgrupo e ID
+      // Se mudou o grupo de classificação, limpar subgrupo
       if (name === "classificacao_grupo") {
         newFormData.classificacao_subgrupo = ""
-        newFormData.classificacao_id = ""
-      }
-
-      // Se mudou o subgrupo, limpar ID
-      if (name === "classificacao_subgrupo") {
-        newFormData.classificacao_id = ""
       }
 
       return newFormData
@@ -142,7 +158,6 @@ export default function RegistroForm() {
     // Campos de classificação
     if (formData.classificacao_grupo) data.append("classificacao_grupo", formData.classificacao_grupo)
     if (formData.classificacao_subgrupo) data.append("classificacao_subgrupo", formData.classificacao_subgrupo)
-    if (formData.classificacao_id) data.append("classificacao_id", formData.classificacao_id)
 
     // Anexo (opcional)
     if (formData.anexo) {
@@ -173,7 +188,6 @@ export default function RegistroForm() {
         obra_id: user?.role === "administrador" ? "" : user?.obra_id?.toString() || "",
         classificacao_grupo: "",
         classificacao_subgrupo: "",
-        classificacao_id: "",
       })
 
       // Reset file input
@@ -197,19 +211,6 @@ export default function RegistroForm() {
       return []
     }
     return Object.keys(classificacoes[formData.classificacao_grupo])
-  }
-
-  // Função para obter IDs baseado no grupo e subgrupo selecionados
-  const getClassificacaoIds = () => {
-    if (
-      !formData.classificacao_grupo ||
-      !formData.classificacao_subgrupo ||
-      !classificacoes[formData.classificacao_grupo] ||
-      !classificacoes[formData.classificacao_grupo][formData.classificacao_subgrupo]
-    ) {
-      return []
-    }
-    return classificacoes[formData.classificacao_grupo][formData.classificacao_subgrupo]
   }
 
   if (obraSuspensa) {
@@ -310,7 +311,7 @@ export default function RegistroForm() {
                 />
               </div>
 
-              {/* Tipo de Registro - Agora mais largo */}
+              {/* Tipo de Registro */}
               <div className="space-y-2">
                 <Label>Tipo de Registro *</Label>
                 <Select value={formData.tipo_registro_id} onValueChange={handleTipoRegistroChange} required>
@@ -368,7 +369,7 @@ export default function RegistroForm() {
             </div>
 
             {/* Classificação */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Classificação Grupo */}
               <div className="space-y-2">
                 <Label>Classificação Grupo *</Label>
@@ -406,28 +407,6 @@ export default function RegistroForm() {
                     {getSubgrupos().map((subgrupo) => (
                       <SelectItem key={subgrupo} value={subgrupo}>
                         {subgrupo}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              {/* Classificação ID */}
-              <div className="space-y-2">
-                <Label>Classificação ID *</Label>
-                <Select
-                  value={formData.classificacao_id}
-                  onValueChange={(value) => handleSelectChange("classificacao_id", value)}
-                  required
-                  disabled={!formData.classificacao_subgrupo}
-                >
-                  <SelectTrigger>
-                    <SelectValue placeholder="Selecione a classificação" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {getClassificacaoIds().map((id) => (
-                      <SelectItem key={id} value={id.toString()}>
-                        {id}
                       </SelectItem>
                     ))}
                   </SelectContent>

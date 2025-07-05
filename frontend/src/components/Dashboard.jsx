@@ -89,14 +89,15 @@ const Dashboard = () => {
 
       // Preparar parâmetros para as APIs
       const timelineParams = obraId ? `30&obra_id=${obraId}` : "30"
+      const estatisticasParams = obraId ? { obra_id: obraId } : {}
 
       // Carregar dados em paralelo
       const promises = [
-        dashboardAPI.getEstatisticas().catch((err) => {
+        dashboardAPI.getEstatisticas(estatisticasParams).catch((err) => {
           console.error("Erro ao carregar estatísticas:", err)
           return { data: {} }
         }),
-        dashboardAPI.getAtividadesRecentes(5).catch((err) => {
+        dashboardAPI.getAtividadesRecentes(5, obraId).catch((err) => {
           console.error("Erro ao carregar atividades:", err)
           return { data: { atividades_recentes: [] } }
         }),
@@ -108,26 +109,14 @@ const Dashboard = () => {
 
       const [estatisticasRes, atividadesRes, timelineRes] = await Promise.all(promises)
 
-      // Filtrar estatísticas por obra se necessário
-      let estatisticasFiltradas = estatisticasRes.data || {}
-      if (obraId && estatisticasFiltradas.registros_por_obra) {
-        const obraEspecifica = estatisticasFiltradas.registros_por_obra.find(
-          (obra) => obra.obra_id === Number.parseInt(obraId),
-        )
-        if (obraEspecifica) {
-          estatisticasFiltradas = {
-            ...estatisticasFiltradas,
-            total_registros_obra_selecionada: obraEspecifica.count,
-          }
-        }
-      }
+      // Processar estatísticas
+      const estatisticasFiltradas = estatisticasRes.data || {}
 
       // Garantir que registros_por_tipo seja sempre um array e ordenar
       if (estatisticasFiltradas.registros_por_tipo && Array.isArray(estatisticasFiltradas.registros_por_tipo)) {
-        // Ordenar do maior para o menor e pegar apenas os 10 primeiros
         estatisticasFiltradas.registros_por_tipo = estatisticasFiltradas.registros_por_tipo
           .sort((a, b) => b.count - a.count)
-          .slice(0, 10) // Limitar aos 10 tipos principais
+          .slice(0, 10)
       } else {
         estatisticasFiltradas.registros_por_tipo = []
       }
@@ -139,7 +128,7 @@ const Dashboard = () => {
       ) {
         estatisticasFiltradas.registros_por_classificacao = estatisticasFiltradas.registros_por_classificacao
           .sort((a, b) => b.count - a.count)
-          .slice(0, 8) // Top 8 classificações
+          .slice(0, 8)
       } else {
         estatisticasFiltradas.registros_por_classificacao = []
       }
@@ -195,34 +184,25 @@ const Dashboard = () => {
   const gerarGradienteAzul = (dados) => {
     if (!dados || dados.length === 0) return []
 
-    // Encontrar o valor máximo e mínimo
     const valores = dados.map((item) => item.count || 0)
     const maxValor = Math.max(...valores)
     const minValor = Math.min(...valores)
 
-    // Se todos os valores são iguais, usar cor média
     if (maxValor === minValor) {
-      return dados.map(() => "#3b82f6") // Azul médio
+      return dados.map(() => "#3b82f6")
     }
 
-    // Gerar cores baseadas na posição relativa do valor
     return dados.map((item) => {
       const valor = item.count || 0
-      // Calcular a intensidade (0 a 1) baseada no valor
       const intensidade = (valor - minValor) / (maxValor - minValor)
-
-      // Interpolar entre azul claro e azul escuro
-      // Azul claro: #93c5fd (RGB: 147, 197, 253)
-      // Azul escuro: #1e40af (RGB: 30, 64, 175)
       const r = Math.round(147 - (147 - 30) * intensidade)
       const g = Math.round(197 - (197 - 64) * intensidade)
       const b = Math.round(253 - (253 - 175) * intensidade)
-
       return `rgb(${r}, ${g}, ${b})`
     })
   }
 
-  // Configurações dos gráficos com proteção contra dados undefined
+  // Configurações dos gráficos
   const registrosPorTipo = Array.isArray(dados.estatisticas.registros_por_tipo)
     ? dados.estatisticas.registros_por_tipo
     : []
@@ -252,12 +232,8 @@ const Dashboard = () => {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: {
-          display: false,
-        },
-        title: {
-          display: false,
-        },
+        legend: { display: false },
+        title: { display: false },
         tooltip: {
           callbacks: {
             label: (context) => `${context.parsed.x} registros`,
@@ -265,19 +241,8 @@ const Dashboard = () => {
         },
       },
       scales: {
-        x: {
-          beginAtZero: true,
-          ticks: {
-            stepSize: 1,
-          },
-        },
-        y: {
-          ticks: {
-            font: {
-              size: 11,
-            },
-          },
-        },
+        x: { beginAtZero: true, ticks: { stepSize: 1 } },
+        y: { ticks: { font: { size: 11 } } },
       },
     },
   }
@@ -300,13 +265,7 @@ const Dashboard = () => {
       plugins: {
         legend: {
           position: "bottom",
-          labels: {
-            padding: 20,
-            usePointStyle: true,
-            font: {
-              size: 11,
-            },
-          },
+          labels: { padding: 20, usePointStyle: true, font: { size: 11 } },
         },
         tooltip: {
           callbacks: {
@@ -352,9 +311,7 @@ const Dashboard = () => {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: {
-          display: false,
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             title: (context) => {
@@ -375,17 +332,8 @@ const Dashboard = () => {
         },
       },
       scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            stepSize: 1,
-          },
-        },
-        x: {
-          ticks: {
-            maxRotation: 45,
-          },
-        },
+        y: { beginAtZero: true, ticks: { stepSize: 1 } },
+        x: { ticks: { maxRotation: 45 } },
       },
     },
   }
@@ -397,11 +345,11 @@ const Dashboard = () => {
         {
           label: "Registros por Obra",
           data: registrosPorObra.map((item) => item.count || 0),
-          backgroundColor: "#3b82f6", // Azul padrão do sistema
+          backgroundColor: "#3b82f6",
           borderRadius: 4,
           borderSkipped: false,
-          barThickness: 40, // Controla a espessura das barras
-          maxBarThickness: 50, // Espessura máxima
+          barThickness: 40,
+          maxBarThickness: 50,
         },
       ],
     },
@@ -409,9 +357,7 @@ const Dashboard = () => {
       responsive: true,
       maintainAspectRatio: false,
       plugins: {
-        legend: {
-          display: false,
-        },
+        legend: { display: false },
         tooltip: {
           callbacks: {
             label: (context) => `${context.parsed.y} registros`,
@@ -419,22 +365,9 @@ const Dashboard = () => {
         },
       },
       scales: {
-        y: {
-          beginAtZero: true,
-          ticks: {
-            stepSize: 1,
-          },
-        },
-        x: {
-          ticks: {
-            maxRotation: 45,
-            font: {
-              size: 11,
-            },
-          },
-        },
+        y: { beginAtZero: true, ticks: { stepSize: 1 } },
+        x: { ticks: { maxRotation: 45, font: { size: 11 } } },
       },
-      // Reduzir o espaçamento entre as barras
       categoryPercentage: 0.7,
       barPercentage: 0.8,
     },
@@ -480,7 +413,6 @@ const Dashboard = () => {
     )
   }
 
-  // Se não há usuário, mostrar mensagem
   if (!user) {
     return (
       <div className="flex items-center justify-center min-h-screen">
@@ -494,7 +426,7 @@ const Dashboard = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header Moderno */}
+      {/* Header */}
       <div className="flex justify-between items-center">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Dashboard</h1>
@@ -509,7 +441,6 @@ const Dashboard = () => {
           </p>
         </div>
         <div className="flex items-center gap-3">
-          {/* Filtro por Obra (apenas para admin) - Usando o mesmo padrão da Pesquisa */}
           {isAdmin() && (
             <div className="flex items-center gap-2">
               <Filter className="h-4 w-4 text-gray-500" />
@@ -556,11 +487,7 @@ const Dashboard = () => {
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-3xl font-bold text-gray-900">
-              {obraSelecionada !== "todas" && dados.estatisticas.total_registros_obra_selecionada !== undefined
-                ? dados.estatisticas.total_registros_obra_selecionada
-                : dados.estatisticas.total_registros || 0}
-            </div>
+            <div className="text-3xl font-bold text-gray-900">{dados.estatisticas.total_registros || 0}</div>
             <p className="text-xs text-gray-500 mt-1">
               {obraSelecionada !== "todas" ? "Registros da obra selecionada" : "Todos os registros"}
             </p>
@@ -613,8 +540,8 @@ const Dashboard = () => {
         </Card>
       </div>
 
-      {/* Gráficos - Agora com 3 gráficos do mesmo tamanho */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+      {/* Gráficos - 4 gráficos em grid 2x2 */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Gráfico de Timeline */}
         <Card>
           <CardHeader>
@@ -645,7 +572,57 @@ const Dashboard = () => {
           </CardContent>
         </Card>
 
-        {/* Gráfico de Obras - Agora menor */}
+        {/* Gráfico de Classificações */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+              Registros por Classificação
+            </CardTitle>
+            <CardDescription>Distribuição por grupos de classificação</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {registrosPorClassificacao.length > 0 ? (
+              <div className="h-80">
+                <Doughnut {...graficoClassificacaoConfig} />
+              </div>
+            ) : (
+              <div className="h-80 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>Nenhum dado disponível</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Gráfico de Tipos */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
+              Top 10 Tipos de Registro
+            </CardTitle>
+            <CardDescription>Os 10 tipos com mais registros</CardDescription>
+          </CardHeader>
+          <CardContent>
+            {registrosPorTipo.length > 0 ? (
+              <div className="h-80">
+                <Bar {...graficoTiposConfig} />
+              </div>
+            ) : (
+              <div className="h-80 flex items-center justify-center text-gray-500">
+                <div className="text-center">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
+                  <p>Nenhum dado disponível</p>
+                </div>
+              </div>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Gráfico de Obras */}
         {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
           <Card>
             <CardHeader>
@@ -662,52 +639,9 @@ const Dashboard = () => {
             </CardContent>
           </Card>
         )}
-
-        {/* Novo Gráfico de Classificações - Doughnut */}
-        {registrosPorClassificacao.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center">
-                <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
-                Registros por Classificação
-              </CardTitle>
-              <CardDescription>Distribuição por grupos de classificação</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="h-80">
-                <Doughnut {...graficoClassificacaoConfig} />
-              </div>
-            </CardContent>
-          </Card>
-        )}
       </div>
 
-      {/* Gráfico de Tipos - Agora em linha separada */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center">
-            <BarChart3 className="h-5 w-5 mr-2 text-blue-600" />
-            Top 10 Tipos de Registro
-          </CardTitle>
-          <CardDescription>Os 10 tipos com mais registros</CardDescription>
-        </CardHeader>
-        <CardContent>
-          {registrosPorTipo.length > 0 ? (
-            <div className="h-96">
-              <Bar {...graficoTiposConfig} />
-            </div>
-          ) : (
-            <div className="h-96 flex items-center justify-center text-gray-500">
-              <div className="text-center">
-                <BarChart3 className="h-12 w-12 mx-auto mb-2 text-gray-300" />
-                <p>Nenhum dado disponível</p>
-              </div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
-
-      {/* Atividades Recentes - Agora 5 em vez de 8 */}
+      {/* Atividades Recentes */}
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center">

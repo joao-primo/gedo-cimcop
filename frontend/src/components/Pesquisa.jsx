@@ -65,8 +65,8 @@ const Pesquisa = () => {
   })
   const [form, setForm] = useState({
     data_registro_inicio: "",
-    obra_id: "0", // Updated default value
-    tipo_registro_id: "0", // Updated default value
+    obra_id: "",
+    tipo_registro_id: "",
     classificacao_grupo: "",
     palavra_chave: "",
   })
@@ -122,11 +122,20 @@ const Pesquisa = () => {
     try {
       console.log("Buscando registros com parâmetros:", { ...form, page, per_page: pagination.per_page })
 
-      const response = await pesquisaAPI.pesquisar({
-        ...form,
+      // Preparar parâmetros, removendo valores vazios
+      const params = {
         page,
         per_page: pagination.per_page,
-      })
+      }
+
+      // Adicionar apenas parâmetros com valores
+      if (form.palavra_chave?.trim()) params.palavra_chave = form.palavra_chave.trim()
+      if (form.data_registro_inicio) params.data_registro_inicio = form.data_registro_inicio
+      if (form.obra_id && form.obra_id !== "") params.obra_id = form.obra_id
+      if (form.tipo_registro_id && form.tipo_registro_id !== "") params.tipo_registro_id = form.tipo_registro_id
+      if (form.classificacao_grupo?.trim()) params.classificacao_grupo = form.classificacao_grupo.trim()
+
+      const response = await pesquisaAPI.pesquisar(params)
 
       console.log("Resposta da pesquisa:", response.data)
 
@@ -162,8 +171,8 @@ const Pesquisa = () => {
     console.log("Limpando filtros...")
     setForm({
       data_registro_inicio: "",
-      obra_id: "0", // Updated default value
-      tipo_registro_id: "0", // Updated default value
+      obra_id: "",
+      tipo_registro_id: "",
       classificacao_grupo: "",
       palavra_chave: "",
     })
@@ -432,7 +441,7 @@ const Pesquisa = () => {
                     <SelectValue placeholder="Selecione uma classificação" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">Todas as classificações</SelectItem>
+                    <SelectItem value="0">Todas as classificações</SelectItem>
                     {filtros.grupos_classificacao.map((grupo) => (
                       <SelectItem key={grupo} value={grupo}>
                         {grupo}
