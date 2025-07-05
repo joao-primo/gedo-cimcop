@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI, classificacoesAPI } from "../services/api"
+import { tipoRegistroAPI, obraAPI, authAPI, registroAPI, classificacaoAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -39,11 +39,11 @@ export default function RegistroForm() {
 
   const loadInitialData = async () => {
     try {
-      const tiposRes = await tiposRegistroAPI.listar()
+      const tiposRes = await tipoRegistroAPI.getTipos()
       setTipos(tiposRes.data.tipos_registro || [])
 
       // Carregar classificações
-      const classificacoesRes = await classificacoesAPI.listar()
+      const classificacoesRes = await classificacaoAPI.getClassificacoes()
       console.log("Classificações carregadas:", classificacoesRes.data)
 
       // Processar classificações para estrutura hierárquica
@@ -82,13 +82,13 @@ export default function RegistroForm() {
       setUser(userData)
 
       if (userData.role === "administrador") {
-        const obrasRes = await obrasAPI.listar()
+        const obrasRes = await obraAPI.getObras()
         setObras(obrasRes.data.obras || [])
       } else {
         setFormData((prev) => ({ ...prev, obra_id: userData.obra_id?.toString() || "" }))
 
         if (userData.obra_id) {
-          const obraRes = await obrasAPI.obter(userData.obra_id)
+          const obraRes = await obraAPI.getObra(userData.obra_id)
           if (obraRes.data.obra?.status === "Suspensa") {
             setObraSuspensa(true)
           }
@@ -172,7 +172,7 @@ export default function RegistroForm() {
 
     try {
       console.log("💾 Criando registro...")
-      const response = await registrosAPI.criar(data)
+      const response = await registroAPI.createRegistro(data)
       console.log("✅ Resposta do servidor:", response.data)
       setMensagem({ tipo: "success", texto: "Registro criado com sucesso!" })
 
