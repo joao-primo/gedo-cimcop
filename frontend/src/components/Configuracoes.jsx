@@ -1,6 +1,8 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { configuracoesAPI, authAPI } from "../services/api" // ← ÚNICA ADIÇÃO
+import { configuracaoAPI, authAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -99,7 +101,7 @@ const Configuracoes = () => {
   const carregarConfiguracoes = async () => {
     try {
       setLoading(true)
-      const response = await configuracoesAPI.get() // ← CORREÇÃO
+      const response = await configuracaoAPI.getConfiguracoes()
 
       if (response.data.configuracoes) {
         setConfiguracoes({ ...configuracoes, ...response.data.configuracoes })
@@ -125,14 +127,19 @@ const Configuracoes = () => {
     try {
       setLoading(true)
 
-      const payload = {
-        configuracoes,
-        ...(isAdmin() && { sistema: configSistema }),
-        notificacoes: configNotificacoes,
-        ...(isAdmin() && { seguranca: configSeguranca }),
+      // Salvar cada configuração individualmente usando a estrutura da API atual
+      const configsToSave = {
+        ...configuracoes,
+        ...(isAdmin() && configSistema),
+        ...configNotificacoes,
+        ...(isAdmin() && configSeguranca),
       }
 
-      await configuracoesAPI.save(payload) // ← CORREÇÃO
+      // Como a API atual usa updateConfiguracao(chave, valor), vamos salvar cada configuração
+      for (const [chave, valor] of Object.entries(configsToSave)) {
+        await configuracaoAPI.updateConfiguracao(chave, valor)
+      }
+
       showMessage("Configurações salvas com sucesso!", "success")
     } catch (error) {
       console.error("Erro ao salvar configurações:", error)
@@ -162,7 +169,6 @@ const Configuracoes = () => {
       setLoading(true)
 
       await authAPI.changePassword({
-        // ← CORREÇÃO
         current_password: senhaAtual,
         new_password: novaSenha,
       })
@@ -182,8 +188,8 @@ const Configuracoes = () => {
   const realizarBackup = async () => {
     try {
       setLoading(true)
-      await configuracoesAPI.backup() // ← CORREÇÃO
-      showMessage("Backup realizado com sucesso!", "success")
+      // Como não há método específico de backup na API atual, vamos simular
+      showMessage("Funcionalidade de backup não disponível na API atual", "error")
     } catch (error) {
       console.error("Erro ao realizar backup:", error)
       showMessage(error.response?.data?.message || "Erro ao realizar backup", "error")
@@ -199,9 +205,8 @@ const Configuracoes = () => {
 
     try {
       setLoading(true)
-      await configuracoesAPI.reset() // ← CORREÇÃO
-      showMessage("Configurações resetadas com sucesso!", "success")
-      await carregarConfiguracoes()
+      // Como não há método específico de reset na API atual, vamos simular
+      showMessage("Funcionalidade de reset não disponível na API atual", "error")
     } catch (error) {
       console.error("Erro ao resetar configurações:", error)
       showMessage(error.response?.data?.message || "Erro ao resetar configurações", "error")
