@@ -1,5 +1,3 @@
-"use client"
-
 import { useEffect, useState } from "react"
 import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI, classificacoesAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
