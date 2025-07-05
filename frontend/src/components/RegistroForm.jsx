@@ -1,5 +1,7 @@
+"use client"
+
 import { useEffect, useState } from "react"
-import { tiposRegistroAPI, obrasAPI, authAPI, registrosAPI, classificacoesAPI } from "../services/api"
+import { tipoRegistroAPI, obrasAPI, authAPI, registroAPI, classificacoesAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -37,7 +39,7 @@ export default function RegistroForm() {
 
   const loadInitialData = async () => {
     try {
-      const tiposRes = await tiposRegistroAPI.listar()
+      const tiposRes = await tipoRegistroAPI.listar()
       setTipos(tiposRes.data.tipos_registro || [])
 
       // Carregar classificações
@@ -170,7 +172,7 @@ export default function RegistroForm() {
 
     try {
       console.log("💾 Criando registro...")
-      const response = await registrosAPI.criar(data)
+      const response = await registroAPI.criar(data)
       console.log("✅ Resposta do servidor:", response.data)
       setMensagem({ tipo: "success", texto: "Registro criado com sucesso!" })
 
