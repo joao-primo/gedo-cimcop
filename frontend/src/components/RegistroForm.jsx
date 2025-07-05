@@ -1,7 +1,7 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import { tipoRegistroAPI, obrasAPI, authAPI, registroAPI, classificacoesAPI } from "../services/api"
+import { tipoRegistroAPI, obrasAPI, authAPI, registroAPI, classificacaoAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -43,7 +43,7 @@ export default function RegistroForm() {
       setTipos(tiposRes.data.tipos_registro || [])
 
       // Carregar classificações
-      const classificacoesRes = await classificacoesAPI.listar()
+      const classificacoesRes = await classificacaoAPI.listar()
       console.log("Classificações carregadas:", classificacoesRes.data)
 
       // Processar classificações para estrutura hierárquica
