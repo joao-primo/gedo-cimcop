@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { pesquisaAPI, registroAPI } from "../services/api"
+import { pesquisaAPI, registrosAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -230,7 +230,7 @@ const Pesquisa = () => {
 
       console.log("Baixando arquivo do registro:", registroId)
 
-      const result = await registroAPI.downloadAnexo(registroId)
+      const result = await registrosAPI.downloadAnexo(registroId)
 
       console.log("Download concluído:", result.filename)
 
@@ -287,7 +287,7 @@ const Pesquisa = () => {
 
       console.log("Excluindo registro:", registro.id)
 
-      await registroAPI.deletar(registro.id)
+      await registrosAPI.deletar(registro.id)
 
       setSuccessMessage(`Registro "${registro.titulo}" excluído com sucesso!`)
 
