@@ -5,7 +5,7 @@ const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000"
 
 const api = axios.create({
   baseURL: API_BASE_URL,
-  timeout: 30000, // tempo maior para downloads grandes
+  timeout: 30000,
   headers: {
     "Content-Type": "application/json",
   },
@@ -18,34 +18,29 @@ api.interceptors.request.use(
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
-    console.log("Fazendo requisição:", config.method?.toUpperCase(), config.url)
     return config
   },
   (error) => {
-    console.error("Erro na requisição:", error)
     return Promise.reject(error)
-  }
+  },
 )
 
 // Interceptor para tratar respostas e erros
 api.interceptors.response.use(
   (response) => {
-    console.log("Resposta recebida:", response.status, response.config.url)
     return response
   },
   (error) => {
-    console.error("Erro na resposta:", error.response?.status, error.config?.url, error.response?.data)
     if (error.response?.status === 401) {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
       window.location.href = "/login"
     }
     return Promise.reject(error)
-  }
+  },
 )
 
 // APIs específicas
-
 export const authAPI = {
   login: (credentials) => api.post("/auth/login", credentials),
   register: (userData) => api.post("/auth/register", userData),
@@ -54,7 +49,6 @@ export const authAPI = {
   forgotPassword: (email) => api.post("/auth/forgot-password", { email }),
   resetPassword: (token, password) => api.post("/auth/reset-password", { token, password }),
   changePassword: (data) => api.post("/auth/change-password", data),
-  getPasswordStatus: () => api.get("/auth/password-status"),
 }
 
 export const userAPI = {
@@ -78,7 +72,6 @@ export const tipoRegistroAPI = {
   createTipo: (tipoData) => api.post("/tipos-registro", tipoData),
   updateTipo: (id, tipoData) => api.put(`/tipos-registro/${id}`, tipoData),
   deleteTipo: (id) => api.delete(`/tipos-registro/${id}`),
-  listarTodos: () => api.get("/tipos-registro/all"),
 }
 
 export const classificacaoAPI = {
@@ -87,7 +80,7 @@ export const classificacaoAPI = {
   updateClassificacao: (id, classificacaoData) => api.put(`/classificacoes/${id}`, classificacaoData),
   deleteClassificacao: (id) => api.delete(`/classificacoes/${id}`),
   getGrupos: () => api.get("/classificacoes/grupos"),
-  getSubgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${encodeURIComponent(grupo)}`),
+  getSubgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${grupo}`),
 }
 
 export const registroAPI = {
@@ -108,59 +101,8 @@ export const registroAPI = {
     api.post(`/registros/${id}/anexo`, formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
-  downloadAnexo: async (id) => {
-    try {
-      const response = await api.get(`/registros/${id}/anexo`, {
-        responseType: "blob",
-        timeout: 60000,
-      })
-
-      const contentDisposition = response.headers["content-disposition"]
-      let filename = `anexo_${id}`
-
-      if (contentDisposition) {
-        const match = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
-        if (match) filename = match[1].replace(/['"]/g, "")
-      }
-
-      if (!filename.includes(".")) {
-        const contentType = response.headers["content-type"]
-        const extMap = {
-          "application/pdf": ".pdf",
-          "application/msword": ".doc",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-          "application/vnd.ms-excel": ".xls",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
-          "image/png": ".png",
-          "image/jpeg": ".jpg",
-          "image/gif": ".gif",
-          "text/plain": ".txt",
-        }
-        if (contentType && extMap[contentType]) filename += extMap[contentType]
-      }
-
-      const url = window.URL.createObjectURL(new Blob([response.data]))
-      const link = document.createElement("a")
-      link.href = url
-      link.setAttribute("download", filename)
-      document.body.appendChild(link)
-      link.click()
-      link.remove()
-      window.URL.revokeObjectURL(url)
-
-      return { success: true, filename }
-    } catch (error) {
-      if (error.response?.status === 404) throw new Error("Arquivo não encontrado")
-      if (error.response?.status === 403) throw new Error("Acesso negado ao arquivo")
-      if (error.code === "ECONNABORTED") throw new Error("Timeout no download - arquivo muito grande")
-      throw new Error("Erro ao baixar arquivo")
-    }
-  },
+  downloadAnexo: (id) => api.get(`/registros/${id}/anexo`, { responseType: "blob" }),
   deleteAnexo: (id) => api.delete(`/registros/${id}/anexo`),
-  importarLote: (formData) =>
-    api.post("/importacao/lote", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }),
 }
 
 export const pesquisaAPI = {
@@ -169,7 +111,7 @@ export const pesquisaAPI = {
     Object.keys(params).forEach((key) => {
       if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
         if (Array.isArray(params[key])) {
-          params[key].forEach((v) => queryString.append(key, v))
+          params[key].forEach((value) => queryString.append(key, value))
         } else {
           queryString.append(key, params[key])
         }
@@ -183,7 +125,7 @@ export const pesquisaAPI = {
     Object.keys(params).forEach((key) => {
       if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
         if (Array.isArray(params[key])) {
-          params[key].forEach((v) => queryString.append(key, v))
+          params[key].forEach((value) => queryString.append(key, value))
         } else {
           queryString.append(key, params[key])
         }
@@ -191,9 +133,9 @@ export const pesquisaAPI = {
     })
     return api.get(`/pesquisa/exportar?${queryString.toString()}`, { responseType: "blob" })
   },
-  visualizar: (id) => api.get(`/pesquisa/${id}/visualizar`),
 }
 
+// CORRIGIDO: Dashboard API com URLs corretas
 export const dashboardAPI = {
   getEstatisticas: (params = {}) => {
     const queryString = new URLSearchParams()
@@ -207,19 +149,25 @@ export const dashboardAPI = {
   },
   getAtividadesRecentes: (limit = 5, obraId = null) => {
     const params = new URLSearchParams({ limit: limit.toString() })
-    if (obraId) params.append("obra_id", obraId.toString())
+    if (obraId) {
+      params.append("obra_id", obraId.toString())
+    }
     return api.get(`/dashboard/atividades-recentes?${params.toString()}`)
   },
   getTimeline: (dias = 30, obraId = null) => {
     const params = new URLSearchParams()
-    if (obraId) params.append("obra_id", obraId.toString())
+    if (obraId) {
+      params.append("obra_id", obraId.toString())
+    }
     const url = params.toString() ? `/dashboard/timeline/${dias}?${params.toString()}` : `/dashboard/timeline/${dias}`
     return api.get(url)
   },
   getResumoObra: (obraId) => api.get(`/dashboard/resumo-obra/${obraId}`),
   getResumoMensal: (obraId = null) => {
     const params = new URLSearchParams()
-    if (obraId) params.append("obra_id", obraId.toString())
+    if (obraId) {
+      params.append("obra_id", obraId.toString())
+    }
     const url = params.toString() ? `/dashboard/resumo-mensal?${params.toString()}` : "/dashboard/resumo-mensal"
     return api.get(url)
   },
@@ -229,8 +177,6 @@ export const configuracaoAPI = {
   getConfiguracoes: () => api.get("/configuracoes"),
   updateConfiguracao: (chave, valor) => api.put("/configuracoes", { chave, valor }),
   getConfiguracao: (chave) => api.get(`/configuracoes/${chave}`),
-  backup: () => api.post("/configuracoes/backup"),
-  reset: () => api.post("/configuracoes/reset"),
 }
 
 export const workflowAPI = {
@@ -240,7 +186,6 @@ export const workflowAPI = {
   deleteWorkflow: (id) => api.delete(`/workflow/${id}`),
   getWorkflow: (id) => api.get(`/workflow/${id}`),
   testWorkflow: (id) => api.post(`/workflow/${id}/test`),
-  listar: () => api.get("/workflow/"),
 }
 
 export const relatorioAPI = {
