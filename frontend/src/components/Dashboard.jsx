@@ -1,6 +1,8 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { useAuth } from "../contexts/AuthContext"
-import { pesquisaAPI } from "../services/api"
+import { dashboardAPI, pesquisaAPI } from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -85,57 +87,30 @@ const Dashboard = () => {
       console.log("Carregando dados do dashboard...", obraId ? `para obra ${obraId}` : "todas as obras")
       setDados((prev) => ({ ...prev, loading: true, error: "" }))
 
-      // Preparar parâmetros para as APIs - CORRIGIDO
-      const estatisticasParams = obraId ? `?obra_id=${obraId}` : ""
-      const atividadesParams = obraId ? `?limit=5&obra_id=${obraId}` : "?limit=5"
-      const timelineParams = obraId ? `30?obra_id=${obraId}` : "30"
+      // Preparar parâmetros para as APIs
+      const timelineParams = obraId ? `30&obra_id=${obraId}` : "30"
+      const estatisticasParams = obraId ? { obra_id: obraId } : {}
 
-      // Carregar dados em paralelo - CORRIGIDO
+      // Carregar dados em paralelo
       const promises = [
-        // Estatísticas com parâmetro de obra
-        fetch(`/api/dashboard/estatisticas${estatisticasParams}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        })
-          .then((res) => res.json())
-          .catch((err) => {
-            console.error("Erro ao carregar estatísticas:", err)
-            return {}
-          }),
-
-        // Atividades recentes com parâmetro de obra
-        fetch(`/api/dashboard/atividades-recentes${atividadesParams}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        })
-          .then((res) => res.json())
-          .catch((err) => {
-            console.error("Erro ao carregar atividades:", err)
-            return { atividades_recentes: [] }
-          }),
-
-        // Timeline com parâmetro de obra
-        fetch(`/api/dashboard/timeline/${timelineParams}`, {
-          headers: {
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-            "Content-Type": "application/json",
-          },
-        })
-          .then((res) => res.json())
-          .catch((err) => {
-            console.error("Erro ao carregar timeline:", err)
-            return { timeline: [] }
-          }),
+        dashboardAPI.getEstatisticas(estatisticasParams).catch((err) => {
+          console.error("Erro ao carregar estatísticas:", err)
+          return { data: {} }
+        }),
+        dashboardAPI.getAtividadesRecentes(5, obraId).catch((err) => {
+          console.error("Erro ao carregar atividades:", err)
+          return { data: { atividades_recentes: [] } }
+        }),
+        dashboardAPI.getTimeline(timelineParams).catch((err) => {
+          console.error("Erro ao carregar timeline:", err)
+          return { data: { timeline: [] } }
+        }),
       ]
 
       const [estatisticasRes, atividadesRes, timelineRes] = await Promise.all(promises)
 
       // Processar estatísticas
-      const estatisticasFiltradas = estatisticasRes || {}
+      const estatisticasFiltradas = estatisticasRes.data || {}
 
       // Garantir que registros_por_tipo seja sempre um array e ordenar
       if (estatisticasFiltradas.registros_por_tipo && Array.isArray(estatisticasFiltradas.registros_por_tipo)) {
@@ -165,14 +140,16 @@ const Dashboard = () => {
 
       console.log("Dados carregados:", {
         estatisticas: estatisticasFiltradas,
-        atividades: atividadesRes?.atividades_recentes || [],
-        timeline: timelineRes?.timeline || [],
+        atividades: atividadesRes.data?.atividades_recentes || [],
+        timeline: timelineRes.data?.timeline || [],
       })
 
       setDados({
         estatisticas: estatisticasFiltradas,
-        atividades: Array.isArray(atividadesRes?.atividades_recentes) ? atividadesRes.atividades_recentes : [],
-        timeline: Array.isArray(timelineRes?.timeline) ? timelineRes.timeline : [],
+        atividades: Array.isArray(atividadesRes.data?.atividades_recentes)
+          ? atividadesRes.data.atividades_recentes
+          : [],
+        timeline: Array.isArray(timelineRes.data?.timeline) ? timelineRes.data.timeline : [],
         loading: false,
         error: "",
       })

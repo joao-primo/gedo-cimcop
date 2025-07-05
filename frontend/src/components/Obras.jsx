@@ -1,5 +1,3 @@
-"use client"
-
 import { useState, useEffect } from "react"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -9,7 +7,7 @@ import { Textarea } from "@/components/ui/textarea"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
-import { obraAPI } from "../services/api"
+import { obrasAPI } from "../services/api" // ← ÚNICA ADIÇÃO
 import {
   Building2,
   Plus,
@@ -52,8 +50,8 @@ const Obras = () => {
   const fetchObras = async () => {
     try {
       setLoading(true)
-      const res = await obraAPI.getObras()
-      setObras(res.data || [])
+      const res = await obrasAPI.listar() // ← CORREÇÃO: usar API configurada
+      setObras(res.data.obras || [])
     } catch (err) {
       console.error("Erro ao buscar obras:", err)
       setMensagem({ tipo: "error", texto: "Erro ao carregar obras." })
@@ -71,9 +69,11 @@ const Obras = () => {
       setLoading(true)
 
       if (obraSelecionada?.id) {
-        await obraAPI.updateObra(obraSelecionada.id, obraSelecionada)
+        // ← CORREÇÃO: usar API para atualizar
+        await obrasAPI.atualizar(obraSelecionada.id, obraSelecionada)
       } else {
-        await obraAPI.createObra(obraSelecionada)
+        // ← CORREÇÃO: usar API para criar
+        await obrasAPI.criar(obraSelecionada)
       }
 
       setMensagem({ tipo: "success", texto: "Obra salva com sucesso!" })
@@ -93,7 +93,7 @@ const Obras = () => {
 
     try {
       setLoading(true)
-      await obraAPI.deleteObra(obraSelecionada.id)
+      await obrasAPI.deletar(obraSelecionada.id) // ← CORREÇÃO: usar API para deletar
 
       setMensagem({ tipo: "success", texto: "Obra excluída com sucesso." })
       setFormVisible(false)

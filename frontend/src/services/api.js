@@ -1,26 +1,26 @@
 import axios from "axios"
 
 // Configuração base do axios
-const API_BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:5000"
-
 const api = axios.create({
-  baseURL: API_BASE_URL,
-  timeout: 30000,
+  baseURL: import.meta.env.VITE_API_URL,
+  timeout: 30000, // ← AUMENTADO: 30 segundos para downloads grandes
   headers: {
     "Content-Type": "application/json",
   },
 })
 
-// Interceptor para adicionar token de autenticação
+// Interceptor para adicionar token automaticamente
 api.interceptors.request.use(
   (config) => {
     const token = localStorage.getItem("token")
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+    console.log("Fazendo requisição:", config.method?.toUpperCase(), config.url)
     return config
   },
   (error) => {
+    console.error("Erro na requisição:", error)
     return Promise.reject(error)
   },
 )
@@ -28,220 +28,193 @@ api.interceptors.request.use(
 // Interceptor para tratar respostas e erros
 api.interceptors.response.use(
   (response) => {
+    console.log("Resposta recebida:", response.status, response.config.url)
     return response
   },
   (error) => {
+    console.error("Erro na resposta:", error.response?.status, error.config?.url, error.response?.data)
+
+    // Se token expirou, redirecionar para login
     if (error.response?.status === 401) {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
       window.location.href = "/login"
     }
+
     return Promise.reject(error)
   },
 )
 
-// APIs específicas
+// APIs de Autenticação
 export const authAPI = {
-  login: (credentials) => api.post("/auth/login", credentials),
-  register: (userData) => api.post("/auth/register", userData),
+  login: (email, password) => api.post("/auth/login", { email, password }),
+  me: () => api.get("/auth/me"),
   logout: () => api.post("/auth/logout"),
-  getCurrentUser: () => api.get("/auth/me"),
-  forgotPassword: (email) => api.post("/auth/forgot-password", { email }),
-  resetPassword: (token, password) => api.post("/auth/reset-password", { token, password }),
+  forgotPassword: (email) => api.post("/forgot-password", { email }),
+  resetPassword: (token, newPassword) => api.post("/reset-password", { token, new_password: newPassword }),
   changePassword: (data) => api.post("/auth/change-password", data),
+  getPasswordStatus: () => api.get("/auth/password-status"),
 }
 
-export const userAPI = {
-  getUsers: () => api.get("/users"),
-  createUser: (userData) => api.post("/users", userData),
-  updateUser: (id, userData) => api.put(`/users/${id}`, userData),
-  deleteUser: (id) => api.delete(`/users/${id}`),
-  changeUserPassword: (id, passwordData) => api.put(`/users/${id}/password`, passwordData),
-}
-
-export const obraAPI = {
-  getObras: () => api.get("/obras"),
-  createObra: (obraData) => api.post("/obras", obraData),
-  updateObra: (id, obraData) => api.put(`/obras/${id}`, obraData),
-  deleteObra: (id) => api.delete(`/obras/${id}`),
-  getObra: (id) => api.get(`/obras/${id}`),
-}
-
-export const tipoRegistroAPI = {
-  getTipos: () => api.get("/tipos-registro"),
-  createTipo: (tipoData) => api.post("/tipos-registro", tipoData),
-  updateTipo: (id, tipoData) => api.put(`/tipos-registro/${id}`, tipoData),
-  deleteTipo: (id) => api.delete(`/tipos-registro/${id}`),
-}
-
-export const classificacaoAPI = {
-  getClassificacoes: () => api.get("/classificacoes"),
-  createClassificacao: (classificacaoData) => api.post("/classificacoes", classificacaoData),
-  updateClassificacao: (id, classificacaoData) => api.put(`/classificacoes/${id}`, classificacaoData),
-  deleteClassificacao: (id) => api.delete(`/classificacoes/${id}`),
-  getGrupos: () => api.get("/classificacoes/grupos"),
-  getSubgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${grupo}`),
-}
-
-export const registroAPI = {
-  getRegistros: (params = {}) => {
-    const queryString = new URLSearchParams()
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-        queryString.append(key, params[key])
-      }
-    })
-    return api.get(`/registros?${queryString.toString()}`)
-  },
-  createRegistro: (registroData) => api.post("/registros", registroData),
-  updateRegistro: (id, registroData) => api.put(`/registros/${id}`, registroData),
-  deleteRegistro: (id) => api.delete(`/registros/${id}`),
-  getRegistro: (id) => api.get(`/registros/${id}`),
-  uploadAnexo: (id, formData) =>
-    api.post(`/registros/${id}/anexo`, formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }),
-  downloadAnexo: (id) => api.get(`/registros/${id}/anexo`, { responseType: "blob" }),
-  deleteAnexo: (id) => api.delete(`/registros/${id}/anexo`),
-}
-
-export const pesquisaAPI = {
-  pesquisar: (params = {}) => {
-    const queryString = new URLSearchParams()
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-        if (Array.isArray(params[key])) {
-          params[key].forEach((value) => queryString.append(key, value))
-        } else {
-          queryString.append(key, params[key])
-        }
-      }
-    })
-    return api.get(`/pesquisa?${queryString.toString()}`)
-  },
-  getFiltros: () => api.get("/pesquisa/filtros"),
-  exportar: (params = {}) => {
-    const queryString = new URLSearchParams()
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-        if (Array.isArray(params[key])) {
-          params[key].forEach((value) => queryString.append(key, value))
-        } else {
-          queryString.append(key, params[key])
-        }
-      }
-    })
-    return api.get(`/pesquisa/exportar?${queryString.toString()}`, { responseType: "blob" })
-  },
-}
-
-// CORRIGIDO: Dashboard API com URLs corretas
+// APIs do Dashboard
 export const dashboardAPI = {
-  getEstatisticas: (params = {}) => {
-    const queryString = new URLSearchParams()
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-        queryString.append(key, params[key])
-      }
+  getEstatisticas: () => api.get("/dashboard/estatisticas"),
+  getAtividadesRecentes: (limit = 10) => api.get(`/dashboard/atividades-recentes?limit=${limit}`),
+  getTimeline: (dias = 30) => api.get(`/dashboard/timeline?dias=${dias}`),
+}
+
+// APIs de Pesquisa
+export const pesquisaAPI = {
+  getFiltros: () => api.get("/pesquisa/filtros"),
+  pesquisar: (params) => api.get("/pesquisa/", { params }),
+  exportar: (filtros) => api.post("/pesquisa/exportar", filtros, { responseType: "blob" }),
+  visualizar: (id) => api.get(`/pesquisa/${id}/visualizar`),
+}
+
+// APIs de Registros
+export const registrosAPI = {
+  listar: (params) => api.get("/registros/", { params }),
+  criar: (data) => {
+    return api.post("/registros/", data, {
+      headers: {
+        "Content-Type": undefined, // Deixar o browser definir automaticamente
+      },
     })
-    const url = queryString.toString() ? `/dashboard/estatisticas?${queryString.toString()}` : "/dashboard/estatisticas"
-    return api.get(url)
   },
-  getAtividadesRecentes: (limit = 5, obraId = null) => {
-    const params = new URLSearchParams({ limit: limit.toString() })
-    if (obraId) {
-      params.append("obra_id", obraId.toString())
+  obter: (id) => api.get(`/registros/${id}`),
+  atualizar: (id, data) => api.put(`/registros/${id}`, data),
+  deletar: (id) => api.delete(`/registros/${id}`),
+  // ← CORREÇÃO CRÍTICA: Melhor tratamento do filename no download
+  downloadAnexo: async (id) => {
+    try {
+      console.log("🔽 Baixando arquivo via backend proxy:", `/api/registros/${id}/download`)
+
+      const response = await api.get(`/registros/${id}/download`, {
+        responseType: "blob", // Importante para arquivos
+        timeout: 60000, // 60 segundos para downloads grandes
+      })
+
+      // ← CORREÇÃO CRÍTICA: Melhor extração do filename
+      const contentDisposition = response.headers["content-disposition"]
+      let filename = `anexo_${id}`
+
+      if (contentDisposition) {
+        // Tentar extrair filename do header Content-Disposition
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+        if (filenameMatch) {
+          filename = filenameMatch[1].replace(/['"]/g, "") // Remover aspas
+        }
+      }
+
+      // ← CORREÇÃO: Se ainda não tem extensão, tentar detectar pelo Content-Type
+      if (!filename.includes(".")) {
+        const contentType = response.headers["content-type"]
+        const extensionMap = {
+          "application/pdf": ".pdf",
+          "application/msword": ".doc",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
+          "application/vnd.ms-excel": ".xls",
+          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
+          "image/png": ".png",
+          "image/jpeg": ".jpg",
+          "image/gif": ".gif",
+          "text/plain": ".txt",
+        }
+
+        if (contentType && extensionMap[contentType]) {
+          filename += extensionMap[contentType]
+        }
+      }
+
+      console.log("📎 Filename detectado:", filename)
+      console.log("📎 Content-Type:", response.headers["content-type"])
+
+      // Criar URL do blob e fazer download
+      const url = window.URL.createObjectURL(new Blob([response.data]))
+      const link = document.createElement("a")
+      link.href = url
+      link.setAttribute("download", filename)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      console.log("✅ Download concluído:", filename)
+      return { success: true, filename }
+    } catch (error) {
+      console.error("❌ Erro ao baixar arquivo:", error)
+
+      // Mensagens de erro mais específicas
+      if (error.response?.status === 404) {
+        throw new Error("Arquivo não encontrado")
+      } else if (error.response?.status === 403) {
+        throw new Error("Acesso negado ao arquivo")
+      } else if (error.code === "ECONNABORTED") {
+        throw new Error("Timeout no download - arquivo muito grande")
+      } else {
+        throw new Error("Erro ao baixar arquivo")
+      }
     }
-    return api.get(`/dashboard/atividades-recentes?${params.toString()}`)
   },
-  getTimeline: (dias = 30, obraId = null) => {
-    const params = new URLSearchParams()
-    if (obraId) {
-      params.append("obra_id", obraId.toString())
-    }
-    const url = params.toString() ? `/dashboard/timeline/${dias}?${params.toString()}` : `/dashboard/timeline/${dias}`
-    return api.get(url)
-  },
-  getResumoObra: (obraId) => api.get(`/dashboard/resumo-obra/${obraId}`),
-  getResumoMensal: (obraId = null) => {
-    const params = new URLSearchParams()
-    if (obraId) {
-      params.append("obra_id", obraId.toString())
-    }
-    const url = params.toString() ? `/dashboard/resumo-mensal?${params.toString()}` : "/dashboard/resumo-mensal"
-    return api.get(url)
-  },
+  importarLote: (formData) =>
+    api.post("/importacao/lote", formData, {
+      headers: { "Content-Type": "multipart/form-data" },
+    }),
 }
 
-export const configuracaoAPI = {
-  getConfiguracoes: () => api.get("/configuracoes"),
-  updateConfiguracao: (chave, valor) => api.put("/configuracoes", { chave, valor }),
-  getConfiguracao: (chave) => api.get(`/configuracoes/${chave}`),
+// APIs de Obras
+export const obrasAPI = {
+  listar: () => api.get("/obras/"),
+  criar: (data) => api.post("/obras/", data),
+  obter: (id) => api.get(`/obras/${id}`),
+  atualizar: (id, data) => api.put(`/obras/${id}`, data),
+  deletar: (id) => api.delete(`/obras/${id}`),
 }
 
+// APIs de Usuários
+export const usuariosAPI = {
+  listar: () => api.get("/users/"),
+  criar: (data) => api.post("/users/", data),
+  obter: (id) => api.get(`/users/${id}`),
+  atualizar: (id, data) => api.put(`/users/${id}`, data),
+  deletar: (id) => api.delete(`/users/${id}`),
+}
+
+// APIs de Tipos de Registro
+export const tiposRegistroAPI = {
+  listar: () => api.get("/tipos-registro/"),
+  listarTodos: () => api.get("/tipos-registro/all"),
+  criar: (data) => api.post("/tipos-registro/", data),
+  obter: (id) => api.get(`/tipos-registro/${id}`),
+  atualizar: (id, data) => api.put(`/tipos-registro/${id}`, data),
+  deletar: (id) => api.delete(`/tipos-registro/${id}`),
+}
+
+// NOVO: APIs de Classificações
+export const classificacoesAPI = {
+  listar: () => api.get("/classificacoes/"),
+  grupos: () => api.get("/classificacoes/grupos"),
+  subgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${encodeURIComponent(grupo)}`),
+  criar: (data) => api.post("/classificacoes/", data),
+  atualizar: (id, data) => api.put(`/classificacoes/${id}`, data),
+  deletar: (id) => api.delete(`/classificacoes/${id}`),
+}
+
+// APIs de Configurações
+export const configuracoesAPI = {
+  get: () => api.get("/configuracoes/"),
+  save: (data) => api.post("/configuracoes/", data),
+  backup: () => api.post("/configuracoes/backup"),
+  reset: () => api.post("/configuracoes/reset"),
+}
+
+// APIs de Workflow
 export const workflowAPI = {
-  getWorkflows: () => api.get("/workflow"),
-  createWorkflow: (workflowData) => api.post("/workflow", workflowData),
-  updateWorkflow: (id, workflowData) => api.put(`/workflow/${id}`, workflowData),
-  deleteWorkflow: (id) => api.delete(`/workflow/${id}`),
-  getWorkflow: (id) => api.get(`/workflow/${id}`),
-  testWorkflow: (id) => api.post(`/workflow/${id}/test`),
+  listar: () => api.get("/workflow/"),
+  criar: (data) => api.post("/workflow/", data),
+  atualizar: (id, data) => api.put(`/workflow/${id}`, data),
+  deletar: (id) => api.delete(`/workflow/${id}`),
 }
 
-export const relatorioAPI = {
-  getRelatorios: () => api.get("/relatorios"),
-  gerarRelatorio: (tipo, params = {}) => {
-    const queryString = new URLSearchParams()
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-        queryString.append(key, params[key])
-      }
-    })
-    return api.get(`/relatorios/${tipo}?${queryString.toString()}`, { responseType: "blob" })
-  },
-  getEstatisticasRelatorio: (params = {}) => {
-    const queryString = new URLSearchParams()
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-        queryString.append(key, params[key])
-      }
-    })
-    return api.get(`/relatorios/estatisticas?${queryString.toString()}`)
-  },
-}
-
-export const importacaoAPI = {
-  downloadTemplate: () => api.get("/importacao/template", { responseType: "blob" }),
-  processarPlanilha: (formData) =>
-    api.post("/importacao/processar", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }),
-  uploadAnexo: (formData) =>
-    api.post("/importacao/upload-anexo", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }),
-  finalizarImportacao: (dados) => api.post("/importacao/finalizar", dados),
-}
-
-export const auditAPI = {
-  getLogs: (params = {}) => {
-    const queryString = new URLSearchParams()
-    Object.keys(params).forEach((key) => {
-      if (params[key] !== null && params[key] !== undefined && params[key] !== "") {
-        queryString.append(key, params[key])
-      }
-    })
-    return api.get(`/audit/logs?${queryString.toString()}`)
-  },
-  getLog: (id) => api.get(`/audit/logs/${id}`),
-}
-
-export const backupAPI = {
-  criarBackup: () => api.post("/backup/criar"),
-  listarBackups: () => api.get("/backup/listar"),
-  restaurarBackup: (filename) => api.post("/backup/restaurar", { filename }),
-  downloadBackup: (filename) => api.get(`/backup/download/${filename}`, { responseType: "blob" }),
-  deleteBackup: (filename) => api.delete(`/backup/delete/${filename}`),
-}
-
+// Export da instância principal para casos especiais
 export default api
