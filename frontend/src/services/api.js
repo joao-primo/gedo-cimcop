@@ -58,8 +58,8 @@ export const authAPI = {
 
 // APIs do Dashboard
 export const dashboardAPI = {
-  getEstatisticas: () => api.get("/dashboard/estatisticas"),
-  getAtividadesRecentes: (limit = 10) => api.get(`/dashboard/atividades-recentes?limit=${limit}`),
+  getEstatisticas: (params = {}) => api.get("/dashboard/estatisticas", { params }),
+  getAtividadesRecentes: (limit = 10, obra_id = null) => api.get(`/dashboard/atividades-recentes?limit=${limit}${obra_id && obra_id !== "todas" ? `&obra_id=${obra_id}` : ""}`),
   getTimeline: (dias = 30, obra_id = null) => {
     let url = `/dashboard/timeline/${dias}`;
     if (obra_id && obra_id !== "todas") {
