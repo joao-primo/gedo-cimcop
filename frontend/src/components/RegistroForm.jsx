@@ -286,7 +286,7 @@ export default function RegistroForm() {
                     onValueChange={(value) => handleSelectChange("obra_id", value)}
                     required
                   >
-                    <SelectTrigger className="h-14 text-base">
+                    <SelectTrigger className="h-14 text-base w-full">
                       <SelectValue placeholder="Selecione a obra" />
                     </SelectTrigger>
                     <SelectContent>
@@ -325,7 +325,7 @@ export default function RegistroForm() {
                 <div className="space-y-3">
                   <Label className="text-base font-medium">Tipo de Registro *</Label>
                   <Select value={formData.tipo_registro_id} onValueChange={handleTipoRegistroChange} required>
-                    <SelectTrigger className="h-12">
+                    <SelectTrigger className="h-12 w-full">
                       <SelectValue placeholder={tipos.length === 0 ? "Nenhum tipo disponível" : "Selecione o tipo"} />
                     </SelectTrigger>
                     <SelectContent>
@@ -390,7 +390,7 @@ export default function RegistroForm() {
                     onValueChange={(value) => handleSelectChange("classificacao_grupo", value)}
                     required
                   >
-                    <SelectTrigger className="h-12">
+                    <SelectTrigger className="h-12 w-full">
                       <SelectValue placeholder="Selecione o grupo" />
                     </SelectTrigger>
                     <SelectContent>
@@ -412,7 +412,7 @@ export default function RegistroForm() {
                     required
                     disabled={!formData.classificacao_grupo}
                   >
-                    <SelectTrigger className="h-12">
+                    <SelectTrigger className="h-12 w-full">
                       <SelectValue placeholder="Selecione o subgrupo" />
                     </SelectTrigger>
                     <SelectContent>

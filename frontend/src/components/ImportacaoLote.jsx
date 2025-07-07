@@ -271,15 +271,6 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
               <h1 className="text-3xl font-bold text-gray-900">Importação em Lote</h1>
               <p className="text-gray-600 mt-2">Importe múltiplos registros via planilha Excel</p>
             </div>
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleClose}
-              className="hover:bg-gray-100"
-              disabled={loading}
-            >
-              <X className="h-5 w-5" />
-            </Button>
           </div>
         </div>
 

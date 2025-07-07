@@ -170,16 +170,13 @@ const Dashboard = () => {
       if (isAdmin()) {
         carregarFiltros()
       }
-      carregarDados()
+      carregarDados(obraSelecionada === "todas" ? null : obraSelecionada)
     }
-  }, [user])
+  }, [user, obraSelecionada])
 
   const handleObraChange = (value) => {
-    console.log("Obra selecionada:", value)
     setObraSelecionada(value)
-    // Garantir que obraId seja null ou string
-    const obraId = value && value !== "todas" ? value.toString() : null
-    carregarDados(obraId)
+    // Não chama carregarDados aqui, pois o useEffect já irá reagir à mudança
   }
 
   // Função para gerar gradiente de cores baseado nos valores
