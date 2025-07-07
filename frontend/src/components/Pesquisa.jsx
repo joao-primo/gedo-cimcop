@@ -765,9 +765,6 @@ const Pesquisa = () => {
                   <FileText className="h-5 w-5 mr-2" />
                   Detalhes do Registro
                 </DialogTitle>
-                <Button variant="ghost" size="sm" onClick={() => setModalVisualizacao(false)}>
-                  <X className="h-4 w-4" />
-                </Button>
               </div>
               <DialogDescription>Visualização completa dos dados do registro</DialogDescription>
             </DialogHeader>

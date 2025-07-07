@@ -622,18 +622,44 @@ const Dashboard = () => {
         </Card>
 
         {/* Gráfico de Obras */}
-        {isAdmin() && obraSelecionada === "todas" && registrosPorObra.length > 0 && (
+        {isAdmin() && registrosPorObra.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">
                 <Building2 className="h-5 w-5 mr-2 text-blue-600" />
                 Registros por Obra
               </CardTitle>
-              <CardDescription>Distribuição de registros entre as obras</CardDescription>
+              <CardDescription>
+                {obraSelecionada === "todas"
+                  ? "Distribuição de registros entre as obras"
+                  : "Registros da obra selecionada"}
+              </CardDescription>
             </CardHeader>
             <CardContent>
               <div className="h-80">
-                <Bar {...graficoObrasConfig} />
+                <Bar {...{
+                  ...graficoObrasConfig,
+                  data: {
+                    ...graficoObrasConfig.data,
+                    labels:
+                      obraSelecionada === "todas"
+                        ? registrosPorObra.map((item) => item.obra_nome || "Obra sem nome")
+                        : registrosPorObra
+                            .filter((item) => item.obra_id?.toString() === obraSelecionada)
+                            .map((item) => item.obra_nome || "Obra sem nome"),
+                    datasets: [
+                      {
+                        ...graficoObrasConfig.data.datasets[0],
+                        data:
+                          obraSelecionada === "todas"
+                            ? registrosPorObra.map((item) => item.count || 0)
+                            : registrosPorObra
+                                .filter((item) => item.obra_id?.toString() === obraSelecionada)
+                                .map((item) => item.count || 0),
+                      },
+                    ],
+                  },
+                }} />
               </div>
             </CardContent>
           </Card>
