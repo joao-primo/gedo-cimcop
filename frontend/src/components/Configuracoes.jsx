@@ -415,78 +415,107 @@ const Configuracoes = () => {
               <CardDescription>Configurações básicas do sistema</CardDescription>
             </CardHeader>
             <CardContent className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Nome do Sistema</Label>
-                  <Input
-                    value={configuracoes.nome_sistema}
-                    onChange={(e) => setConfiguracoes({ ...configuracoes, nome_sistema: e.target.value })}
-                  />
+              {/* Informações do Sistema - Somente Leitura */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Info className="h-5 w-5 text-blue-600" />
+                  <h3 className="text-lg font-semibold">Informações do Sistema</h3>
                 </div>
-                <div className="space-y-2">
-                  <Label>Versão</Label>
-                  <Input
-                    value={configuracoes.versao}
-                    onChange={(e) => setConfiguracoes({ ...configuracoes, versao: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Empresa</Label>
-                  <Input
-                    value={configuracoes.empresa}
-                    onChange={(e) => setConfiguracoes({ ...configuracoes, empresa: e.target.value })}
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label>Contato de Suporte</Label>
-                  <Input
-                    value={configuracoes.contato_suporte}
-                    onChange={(e) => setConfiguracoes({ ...configuracoes, contato_suporte: e.target.value })}
-                  />
+                <Alert className="border-blue-200 bg-blue-50">
+                  <Info className="h-4 w-4 text-blue-600" />
+                  <AlertDescription className="text-blue-700">
+                    As informações do sistema são gerenciadas pelo administrador principal e não podem ser alteradas aqui.
+                  </AlertDescription>
+                </Alert>
+                
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-500">Nome do Sistema</Label>
+                    <Input
+                      value={configuracoes.nome_sistema}
+                      disabled
+                      className="bg-gray-50 text-gray-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-500">Versão</Label>
+                    <Input
+                      value={configuracoes.versao}
+                      disabled
+                      className="bg-gray-50 text-gray-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-500">Empresa</Label>
+                    <Input
+                      value={configuracoes.empresa}
+                      disabled
+                      className="bg-gray-50 text-gray-700"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label className="text-sm font-medium text-gray-500">Contato de Suporte</Label>
+                    <Input
+                      value={configuracoes.contato_suporte}
+                      disabled
+                      className="bg-gray-50 text-gray-700"
+                    />
+                  </div>
                 </div>
               </div>
 
-              <div className="space-y-2">
-                <Label>Descrição</Label>
-                <Textarea
-                  value={configuracoes.descricao}
-                  onChange={(e) => setConfiguracoes({ ...configuracoes, descricao: e.target.value })}
-                  rows={3}
-                />
-              </div>
+              <Separator />
 
-              <div className="grid grid-cols-2 gap-4">
-                <div className="space-y-2">
-                  <Label>Fuso Horário</Label>
-                  <Select
-                    value={configuracoes.timezone}
-                    onValueChange={(value) => setConfiguracoes({ ...configuracoes, timezone: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="America/Sao_Paulo">São Paulo (GMT-3)</SelectItem>
-                      <SelectItem value="America/Rio_Branco">Rio Branco (GMT-5)</SelectItem>
-                      <SelectItem value="America/Manaus">Manaus (GMT-4)</SelectItem>
-                    </SelectContent>
-                  </Select>
+              {/* Configurações Editáveis */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-2">
+                  <Settings className="h-5 w-5 text-green-600" />
+                  <h3 className="text-lg font-semibold">Configurações Editáveis</h3>
                 </div>
+
                 <div className="space-y-2">
-                  <Label>Idioma</Label>
-                  <Select
-                    value={configuracoes.idioma}
-                    onValueChange={(value) => setConfiguracoes({ ...configuracoes, idioma: value })}
-                  >
-                    <SelectTrigger>
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
-                      <SelectItem value="en-US">English (US)</SelectItem>
-                      <SelectItem value="es-ES">Español</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <Label>Descrição</Label>
+                  <Textarea
+                    value={configuracoes.descricao}
+                    onChange={(e) => setConfiguracoes({ ...configuracoes, descricao: e.target.value })}
+                    rows={3}
+                    placeholder="Descrição do sistema..."
+                  />
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <div className="space-y-2">
+                    <Label>Fuso Horário</Label>
+                    <Select
+                      value={configuracoes.timezone}
+                      onValueChange={(value) => setConfiguracoes({ ...configuracoes, timezone: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="America/Sao_Paulo">São Paulo (GMT-3)</SelectItem>
+                        <SelectItem value="America/Rio_Branco">Rio Branco (GMT-5)</SelectItem>
+                        <SelectItem value="America/Manaus">Manaus (GMT-4)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="space-y-2">
+                    <Label>Idioma</Label>
+                    <Select
+                      value={configuracoes.idioma}
+                      onValueChange={(value) => setConfiguracoes({ ...configuracoes, idioma: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="pt-BR">Português (Brasil)</SelectItem>
+                        <SelectItem value="en-US">English (US)</SelectItem>
+                        <SelectItem value="es-ES">Español</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
                 </div>
               </div>
             </CardContent>

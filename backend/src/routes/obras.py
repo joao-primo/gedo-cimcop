@@ -96,7 +96,7 @@ def create_obra(current_user):
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
-@obras_bp.route('/<int:obra_id>/', methods=['PUT'])  # ✅ com barra final
+@obras_bp.route('/<int:obra_id>', methods=['PUT'])
 @token_required
 @admin_required
 def update_obra(current_user, obra_id):
@@ -151,7 +151,7 @@ def update_obra(current_user, obra_id):
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
 
 
-@obras_bp.route('/<int:obra_id>/', methods=['DELETE'])  # ✅ com barra final
+@obras_bp.route('/<int:obra_id>', methods=['DELETE'])
 @token_required
 @admin_required
 def delete_obra(current_user, obra_id):

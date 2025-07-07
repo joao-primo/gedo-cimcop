@@ -324,26 +324,69 @@ def exportar_resultados(current_user):
         if not registros:
             return jsonify({'message': 'Nenhum registro encontrado para exportar'}), 404
 
+        # Campos disponíveis para exportação
+        available_fields = {
+            'ID': 'id',
+            'Título': 'titulo',
+            'Tipo de Registro': 'tipo_registro',
+            'Classificação Grupo': 'classificacao_grupo',
+            'Classificação Subgrupo': 'classificacao_subgrupo',
+            'Data do Registro': 'data_registro',
+            'Código/Número': 'codigo_numero',
+            'Descrição': 'descricao',
+            'Autor': 'autor',
+            'Obra': 'obra',
+            'Código da Obra': 'obra_codigo',
+            'Tem Anexo': 'tem_anexo',
+            'Nome do Arquivo': 'nome_arquivo_original',
+            'Data de Criação': 'created_at',
+            'Última Atualização': 'updated_at'
+        }
+
+        # Campos selecionados (padrão: todos se não especificado)
+        selected_fields = data.get('selected_fields', list(available_fields.keys()))
+
         # Preparar dados para Excel
         dados_excel = []
         for registro in registros:
-            dados_excel.append({
-                'ID': registro.id,
-                'Título': registro.titulo,
-                'Tipo de Registro': registro.tipo_registro,
-                'Classificação Grupo': registro.classificacao_grupo or '',
-                'Classificação Subgrupo': registro.classificacao_subgrupo or '',
-                'Data do Registro': registro.data_registro.strftime('%Y-%m-%d') if registro.data_registro else '',
-                'Código/Número': registro.codigo_numero or '',
-                'Descrição': registro.descricao,
-                'Autor': registro.autor.username if registro.autor else '',
-                'Obra': registro.obra.nome if registro.obra else '',
-                'Código da Obra': registro.obra.codigo if registro.obra else '',
-                'Tem Anexo': 'Sim' if (registro.blob_url or registro.caminho_anexo) else 'Não',
-                'Nome do Arquivo': registro.nome_arquivo_original or '',
-                'Data de Criação': registro.created_at.strftime('%Y-%m-%d %H:%M:%S') if registro.created_at else '',
-                'Última Atualização': registro.updated_at.strftime('%Y-%m-%d %H:%M:%S') if registro.updated_at else ''
-            })
+            row_data = {}
+            
+            for field_key in selected_fields:
+                if field_key in available_fields:
+                    field_name = available_fields[field_key]
+                    
+                    if field_name == 'id':
+                        row_data[field_key] = registro.id
+                    elif field_name == 'titulo':
+                        row_data[field_key] = registro.titulo
+                    elif field_name == 'tipo_registro':
+                        row_data[field_key] = registro.tipo_registro
+                    elif field_name == 'classificacao_grupo':
+                        row_data[field_key] = registro.classificacao_grupo or ''
+                    elif field_name == 'classificacao_subgrupo':
+                        row_data[field_key] = registro.classificacao_subgrupo or ''
+                    elif field_name == 'data_registro':
+                        row_data[field_key] = registro.data_registro.strftime('%Y-%m-%d') if registro.data_registro else ''
+                    elif field_name == 'codigo_numero':
+                        row_data[field_key] = registro.codigo_numero or ''
+                    elif field_name == 'descricao':
+                        row_data[field_key] = registro.descricao
+                    elif field_name == 'autor':
+                        row_data[field_key] = registro.autor.username if registro.autor else ''
+                    elif field_name == 'obra':
+                        row_data[field_key] = registro.obra.nome if registro.obra else ''
+                    elif field_name == 'obra_codigo':
+                        row_data[field_key] = registro.obra.codigo if registro.obra else ''
+                    elif field_name == 'tem_anexo':
+                        row_data[field_key] = 'Sim' if (registro.blob_url or registro.caminho_anexo) else 'Não'
+                    elif field_name == 'nome_arquivo_original':
+                        row_data[field_key] = registro.nome_arquivo_original or ''
+                    elif field_name == 'created_at':
+                        row_data[field_key] = registro.created_at.strftime('%Y-%m-%d %H:%M:%S') if registro.created_at else ''
+                    elif field_name == 'updated_at':
+                        row_data[field_key] = registro.updated_at.strftime('%Y-%m-%d %H:%M:%S') if registro.updated_at else ''
+            
+            dados_excel.append(row_data)
 
         # Criar arquivo Excel
         output = BytesIO()

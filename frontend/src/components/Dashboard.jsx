@@ -88,9 +88,9 @@ const Dashboard = () => {
       setDados((prev) => ({ ...prev, loading: true, error: "" }))
 
       // Preparar parâmetros para as APIs - CORRIGIDO
-      const timelineParams = obraId && obraId !== "todas" ? `30&obra_id=${obraId}` : "30"
-      const estatisticasParams = obraId && obraId !== "todas" ? { obra_id: obraId } : {}
-      const atividadesObraId = obraId && obraId !== "todas" ? obraId : null
+      const dias = 30;
+      const estatisticasParams = obraId && obraId !== "todas" ? { obra_id: obraId } : {};
+      const atividadesObraId = obraId && obraId !== "todas" ? obraId : null;
 
       // Carregar dados em paralelo
       const promises = [
@@ -102,7 +102,7 @@ const Dashboard = () => {
           console.error("Erro ao carregar atividades:", err)
           return { data: { atividades_recentes: [] } }
         }),
-        dashboardAPI.getTimeline(timelineParams).catch((err) => {
+        dashboardAPI.getTimeline(dias, obraId).catch((err) => {
           console.error("Erro ao carregar timeline:", err)
           return { data: { timeline: [] } }
         }),
@@ -177,8 +177,8 @@ const Dashboard = () => {
   const handleObraChange = (value) => {
     console.log("Obra selecionada:", value)
     setObraSelecionada(value)
-    // CORRIGIDO: Passar o valor correto para carregarDados
-    const obraId = value === "todas" ? null : value
+    // Garantir que obraId seja null ou string
+    const obraId = value && value !== "todas" ? value.toString() : null
     carregarDados(obraId)
   }
 

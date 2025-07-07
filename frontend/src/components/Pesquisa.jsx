@@ -85,11 +85,36 @@ const Pesquisa = () => {
   const [downloadingId, setDownloadingId] = useState(null)
   const [exportingExcel, setExportingExcel] = useState(false)
   const [successMessage, setSuccessMessage] = useState("")
+  const [showExportModal, setShowExportModal] = useState(false)
+  const [selectedFields, setSelectedFields] = useState([
+    'ID', 'Título', 'Tipo de Registro', 'Classificação Grupo', 'Classificação Subgrupo',
+    'Data do Registro', 'Código/Número', 'Descrição', 'Autor', 'Obra', 'Código da Obra',
+    'Tem Anexo', 'Nome do Arquivo', 'Data de Criação', 'Última Atualização'
+  ])
 
   // Estados para visualização de registro
   const [registroSelecionado, setRegistroSelecionado] = useState(null)
   const [modalVisualizacao, setModalVisualizacao] = useState(false)
   const [loadingVisualizacao, setLoadingVisualizacao] = useState(false)
+
+  // Lista de campos disponíveis para exportação
+  const availableFields = [
+    { key: 'ID', label: 'ID do Registro' },
+    { key: 'Título', label: 'Título' },
+    { key: 'Tipo de Registro', label: 'Tipo de Registro' },
+    { key: 'Classificação Grupo', label: 'Classificação Grupo' },
+    { key: 'Classificação Subgrupo', label: 'Classificação Subgrupo' },
+    { key: 'Data do Registro', label: 'Data do Registro' },
+    { key: 'Código/Número', label: 'Código/Número' },
+    { key: 'Descrição', label: 'Descrição' },
+    { key: 'Autor', label: 'Autor' },
+    { key: 'Obra', label: 'Obra' },
+    { key: 'Código da Obra', label: 'Código da Obra' },
+    { key: 'Tem Anexo', label: 'Tem Anexo' },
+    { key: 'Nome do Arquivo', label: 'Nome do Arquivo' },
+    { key: 'Data de Criação', label: 'Data de Criação' },
+    { key: 'Última Atualização', label: 'Última Atualização' }
+  ]
 
   useEffect(() => {
     console.log("Componente Pesquisa montado, carregando filtros...")
@@ -185,17 +210,50 @@ const Pesquisa = () => {
   }
 
   const handleExportExcel = async () => {
+    setShowExportModal(true)
+  }
+
+  const executeExport = async () => {
     try {
       setExportingExcel(true)
       setError("")
+      setShowExportModal(false)
 
       console.log("Exportando registros para Excel...")
 
-      const result = await pesquisaAPI.exportar(form)
+      const response = await pesquisaAPI.exportar({
+        ...form,
+        selected_fields: selectedFields
+      })
 
-      console.log("Exportação concluída:", result.filename)
+      // Extrair nome do arquivo do header Content-Disposition
+      const contentDisposition = response.headers["content-disposition"]
+      let filename = "registros_exportacao.xlsx"
 
-      setSuccessMessage(`Arquivo "${result.filename}" exportado com sucesso!`)
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
+        if (filenameMatch) {
+          filename = filenameMatch[1].replace(/['"]/g, "")
+        }
+      }
+
+      // Criar blob e fazer download
+      const blob = new Blob([response.data], {
+        type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      })
+      
+      const url = window.URL.createObjectURL(blob)
+      const link = document.createElement("a")
+      link.href = url
+      link.setAttribute("download", filename)
+      document.body.appendChild(link)
+      link.click()
+      link.remove()
+      window.URL.revokeObjectURL(url)
+
+      console.log("Exportação concluída:", filename)
+
+      setSuccessMessage(`Arquivo "${filename}" exportado com sucesso!`)
       setTimeout(() => setSuccessMessage(""), 3000)
     } catch (err) {
       console.error("Erro ao exportar:", err)
@@ -203,6 +261,14 @@ const Pesquisa = () => {
     } finally {
       setExportingExcel(false)
     }
+  }
+
+  const handleFieldToggle = (fieldKey) => {
+    setSelectedFields(prev => 
+      prev.includes(fieldKey) 
+        ? prev.filter(f => f !== fieldKey)
+        : [...prev, fieldKey]
+    )
   }
 
   const handleVisualizarRegistro = async (registroId) => {
@@ -837,6 +903,71 @@ const Pesquisa = () => {
                 <p className="text-gray-600">Erro ao carregar dados do registro</p>
               </div>
             )}
+          </DialogContent>
+        </Dialog>
+
+        {/* Modal de Seleção de Campos para Exportação */}
+        <Dialog open={showExportModal} onOpenChange={setShowExportModal}>
+          <DialogContent className="max-w-2xl">
+            <DialogHeader>
+              <DialogTitle className="flex items-center">
+                <FileSpreadsheet className="h-5 w-5 mr-2" />
+                Selecionar Campos para Exportação
+              </DialogTitle>
+              <DialogDescription>
+                Selecione quais campos deseja incluir no arquivo Excel. A exportação respeitará os filtros atualmente aplicados.
+              </DialogDescription>
+            </DialogHeader>
+
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4 max-h-96 overflow-y-auto">
+                {availableFields.map((field) => (
+                  <div key={field.key} className="flex items-center space-x-3">
+                    <input
+                      type="checkbox"
+                      id={field.key}
+                      checked={selectedFields.includes(field.key)}
+                      onChange={() => handleFieldToggle(field.key)}
+                      className="h-4 w-4 text-blue-600 focus:ring-blue-500 border-gray-300 rounded"
+                    />
+                    <label htmlFor={field.key} className="text-sm font-medium text-gray-700">
+                      {field.label}
+                    </label>
+                  </div>
+                ))}
+              </div>
+
+              <div className="flex justify-between items-center pt-4 border-t">
+                <div className="text-sm text-gray-600">
+                  {selectedFields.length} de {availableFields.length} campos selecionados
+                </div>
+                <div className="flex gap-3">
+                  <Button
+                    variant="outline"
+                    onClick={() => setShowExportModal(false)}
+                    disabled={exportingExcel}
+                  >
+                    Cancelar
+                  </Button>
+                  <Button
+                    onClick={executeExport}
+                    disabled={exportingExcel || selectedFields.length === 0}
+                  >
+                    {exportingExcel ? (
+                      <>
+                        <RefreshCw className="h-4 w-4 mr-2 animate-spin" />
+                        Exportando...
+                      </>
+                    ) : (
+                      <>
+                        <FileSpreadsheet className="h-4 w-4 mr-2" />
+                        Exportar Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </div>
+            </div>
           </DialogContent>
         </Dialog>
       </div>

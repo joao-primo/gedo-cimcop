@@ -63,8 +63,7 @@ def save_file_blob(file):
                 'blob_pathname': blob_data['pathname'],
                 'nome_arquivo_original': blob_data['filename'],
                 'formato_arquivo': blob_data.get('file_extension', blob_data['filename'].rsplit('.', 1)[1].lower() if '.' in blob_data['filename'] else None),
-                'tamanho_arquivo': blob_data['size'],
-                'content_type': blob_data.get('content_type', 'application/octet-stream')
+                'tamanho_arquivo': blob_data['size']
             }
     except Exception as e:
         print(f"❌ Erro no upload para Blob: {str(e)}")

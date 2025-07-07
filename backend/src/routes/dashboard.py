@@ -193,14 +193,19 @@ def get_timeline(current_user, dias):
             func.date(Registro.created_at)
         ).order_by(func.date(Registro.created_at)).all()
 
+        # Garante que todos os dias do período estejam presentes, mesmo que count=0
+        datas_existentes = {item.data: item.count for item in timeline_data}
+        resultado_timeline = []
+        for i in range(dias):
+            dia = (datetime.utcnow() - timedelta(days=dias - 1 - i)).date()
+            count = datas_existentes.get(dia, 0)
+            resultado_timeline.append({
+                'data': dia.isoformat(),
+                'count': count
+            })
+
         return jsonify({
-            'timeline': [
-                {
-                    'data': item.data.isoformat() if item.data else None,
-                    'count': item.count
-                }
-                for item in timeline_data
-            ]
+            'timeline': resultado_timeline
         }), 200
 
     except Exception as e:

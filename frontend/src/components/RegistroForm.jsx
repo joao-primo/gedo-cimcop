@@ -286,7 +286,7 @@ export default function RegistroForm() {
                     onValueChange={(value) => handleSelectChange("obra_id", value)}
                     required
                   >
-                    <SelectTrigger className="h-12">
+                    <SelectTrigger className="h-14 text-base">
                       <SelectValue placeholder="Selecione a obra" />
                     </SelectTrigger>
                     <SelectContent>

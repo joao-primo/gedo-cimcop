@@ -262,280 +262,405 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
   }
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-lg shadow-2xl border border-gray-200 max-w-6xl w-full max-h-[90vh] overflow-hidden">
-        <div className="flex justify-between items-center p-6 border-b bg-gradient-to-r from-blue-50 to-indigo-50">
-          <div>
-            <h2 className="text-2xl font-bold text-gray-900">Importação em Lote</h2>
-            <p className="text-gray-600">Importe múltiplos registros via planilha</p>
+    <div className="min-h-screen bg-gray-50 py-8 px-4 sm:px-6 lg:px-8">
+      <div className="max-w-4xl mx-auto">
+        {/* Header */}
+        <div className="mb-8">
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-900">Importação em Lote</h1>
+              <p className="text-gray-600 mt-2">Importe múltiplos registros via planilha Excel</p>
+            </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={handleClose}
+              className="hover:bg-gray-100"
+              disabled={loading}
+            >
+              <X className="h-5 w-5" />
+            </Button>
           </div>
-          {/* CORRIGIDO: Botão X funcional */}
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={handleClose}
-            className="hover:bg-gray-100 p-2"
-            disabled={loading}
-            type="button"
-          >
-            <X className="h-5 w-5" />
-          </Button>
         </div>
 
-        <div className="p-6 overflow-y-auto max-h-[calc(90vh-120px)] bg-white">
-          {/* Mensagens */}
-          {mensagem.texto && (
-            <Alert
-              className={`mb-6 ${
-                mensagem.tipo === "success" ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"
-              }`}
-            >
-              {mensagem.tipo === "success" ? (
-                <CheckCircle className="h-4 w-4 text-green-600" />
-              ) : (
-                <AlertTriangle className="h-4 w-4 text-red-600" />
-              )}
-              <AlertDescription className={mensagem.tipo === "success" ? "text-green-700" : "text-red-700"}>
-                {mensagem.texto}
-              </AlertDescription>
-            </Alert>
-          )}
+        {/* Mensagens */}
+        {mensagem.texto && (
+          <Alert
+            className={`mb-6 ${
+              mensagem.tipo === "success" ? "border-green-200 bg-green-50" : "border-red-200 bg-red-50"
+            }`}
+          >
+            {mensagem.tipo === "success" ? (
+              <CheckCircle className="h-4 w-4 text-green-600" />
+            ) : (
+              <AlertTriangle className="h-4 w-4 text-red-600" />
+            )}
+            <AlertDescription className={mensagem.tipo === "success" ? "text-green-700" : "text-red-700"}>
+              {mensagem.texto}
+            </AlertDescription>
+          </Alert>
+        )}
 
-          {/* Etapa 1: Upload da Planilha */}
-          {etapa === 1 && (
-            <div className="space-y-6">
-              <Card className="bg-white border border-gray-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Download className="mr-2 h-5 w-5" />
-                    1. Baixar Template
-                  </CardTitle>
-                  <CardDescription>Baixe o template Excel com o formato correto para importação</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Button onClick={downloadTemplate} disabled={loading} variant="outline">
-                    {loading ? (
-                      <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                        Gerando...
-                      </>
-                    ) : (
-                      <>
-                        <FileSpreadsheet className="mr-2 h-4 w-4" />
-                        Baixar Template Excel
-                      </>
-                    )}
-                  </Button>
-                </CardContent>
-              </Card>
-
-              <Card className="bg-white border border-gray-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Upload className="mr-2 h-5 w-5" />
-                    2. Enviar Planilha Preenchida
-                  </CardTitle>
-                  <CardDescription>
-                    Selecione a planilha Excel (.xlsx, .xls) ou CSV preenchida com os dados
-                  </CardDescription>
-                </CardHeader>
-                <CardContent className="space-y-4">
-                  <div>
-                    <Label>Arquivo da Planilha *</Label>
-                    <Input type="file" onChange={handleFileChange} accept=".xlsx,.xls,.csv" className="mt-2" />
-                    {arquivo && <p className="text-sm text-green-600 mt-2">✓ Arquivo selecionado: {arquivo.name}</p>}
+        {/* Etapa 1: Upload da Planilha */}
+        {etapa === 1 && (
+          <div className="space-y-8">
+            {/* Card Principal - Botão Central */}
+            <Card className="shadow-lg border-0 bg-gradient-to-br from-blue-50 to-indigo-50">
+              <CardContent className="p-12 text-center">
+                <div className="mb-8">
+                  <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-6">
+                    <Upload className="h-12 w-12 text-blue-600" />
                   </div>
+                  <h2 className="text-2xl font-bold text-gray-900 mb-2">Importar Registros</h2>
+                  <p className="text-gray-600 max-w-md mx-auto">
+                    Clique no botão abaixo para começar a importação de registros em lote
+                  </p>
+                </div>
 
-                  <Button onClick={processarPlanilha} disabled={!arquivo || loading} className="w-full">
+                <div className="space-y-4">
+                  <Button
+                    onClick={() => setEtapa(1.5)} // Etapa intermediária para seleção de arquivo
+                    size="lg"
+                    className="h-16 px-8 text-lg font-semibold bg-blue-600 hover:bg-blue-700"
+                    disabled={loading}
+                  >
                     {loading ? (
                       <>
-                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        <Loader2 className="mr-3 h-6 w-6 animate-spin" />
                         Processando...
                       </>
                     ) : (
                       <>
-                        <FileText className="mr-2 h-4 w-4" />
-                        Processar Planilha
+                        <Upload className="mr-3 h-6 w-6" />
+                        Iniciar Importação
                       </>
                     )}
                   </Button>
-                </CardContent>
-              </Card>
-            </div>
-          )}
 
-          {/* Etapa 2: Revisão dos Dados */}
-          {etapa === 2 && (
-            <div className="space-y-6">
-              <Card className="bg-white border border-gray-200">
-                <CardHeader>
-                  <CardTitle>Revisão dos Dados</CardTitle>
-                  <CardDescription>Verifique os dados processados antes de continuar</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="grid grid-cols-3 gap-4 mb-6">
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-blue-600">{estatisticas.total}</div>
-                      <div className="text-sm text-gray-600">Total de Linhas</div>
+                  <div className="flex items-center justify-center space-x-6 text-sm text-gray-500">
+                    <div className="flex items-center">
+                      <FileSpreadsheet className="h-4 w-4 mr-2" />
+                      <span>Planilha Excel</span>
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-green-600">{estatisticas.validos}</div>
-                      <div className="text-sm text-gray-600">Registros Válidos</div>
+                    <div className="flex items-center">
+                      <CheckCircle className="h-4 w-4 mr-2" />
+                      <span>Processamento Automático</span>
                     </div>
-                    <div className="text-center">
-                      <div className="text-2xl font-bold text-red-600">{estatisticas.erros}</div>
-                      <div className="text-sm text-gray-600">Erros Encontrados</div>
+                    <div className="flex items-center">
+                      <Download className="h-4 w-4 mr-2" />
+                      <span>Download de Anexos</span>
                     </div>
                   </div>
+                </div>
+              </CardContent>
+            </Card>
 
-                  <Tabs defaultValue="validos" className="w-full">
-                    <TabsList className="grid w-full grid-cols-2">
-                      <TabsTrigger value="validos">Registros Válidos ({estatisticas.validos})</TabsTrigger>
-                      <TabsTrigger value="erros">Erros ({estatisticas.erros})</TabsTrigger>
-                    </TabsList>
+            {/* Card de Informações */}
+            <Card className="shadow-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <FileSpreadsheet className="mr-2 h-5 w-5" />
+                  Como Funciona
+                </CardTitle>
+                <CardDescription>Passo a passo da importação</CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-blue-600 font-bold">1</span>
+                    </div>
+                    <h3 className="font-semibold mb-2">Baixar Template</h3>
+                    <p className="text-sm text-gray-600">Use o template Excel com o formato correto</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-green-600 font-bold">2</span>
+                    </div>
+                    <h3 className="font-semibold mb-2">Preencher Dados</h3>
+                    <p className="text-sm text-gray-600">Adicione os registros na planilha</p>
+                  </div>
+                  <div className="text-center">
+                    <div className="w-12 h-12 bg-purple-100 rounded-full flex items-center justify-center mx-auto mb-3">
+                      <span className="text-purple-600 font-bold">3</span>
+                    </div>
+                    <h3 className="font-semibold mb-2">Importar</h3>
+                    <p className="text-sm text-gray-600">Faça upload e processe automaticamente</p>
+                  </div>
+                </div>
 
-                    <TabsContent value="validos" className="space-y-4">
-                      <div className="max-h-96 overflow-y-auto">
-                        {registrosProcessados.map((registro) => (
-                          <Card key={registro.id_temp} className="mb-3 bg-white border border-gray-200">
-                            <CardContent className="p-4">
-                              <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                  <h4 className="font-semibold">{registro.titulo}</h4>
-                                  <p className="text-sm text-gray-600">Tipo: {registro.tipo_registro}</p>
-                                  <p className="text-sm text-gray-600">Data: {registro.data_registro}</p>
-                                </div>
-                                <div>
-                                  <p className="text-sm text-gray-600">Código: {registro.codigo_numero}</p>
-                                  <p className="text-sm text-gray-600">Obra: {registro.obra_nome}</p>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
+                <div className="mt-6 pt-6 border-t">
+                  <Button onClick={downloadTemplate} disabled={loading} variant="outline" className="w-full">
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Gerando Template...
+                      </>
+                    ) : (
+                      <>
+                        <Download className="mr-2 h-4 w-4" />
+                        Baixar Template Excel
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Etapa 1.5: Seleção de Arquivo */}
+        {etapa === 1.5 && (
+          <div className="space-y-6">
+            <Card className="shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="flex items-center">
+                  <Upload className="mr-2 h-5 w-5" />
+                  Selecionar Arquivo
+                </CardTitle>
+                <CardDescription>Escolha a planilha Excel preenchida para importação</CardDescription>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="space-y-6">
+                  <div>
+                    <Label className="text-base font-medium">Arquivo da Planilha *</Label>
+                    <div className="mt-3">
+                      <Input 
+                        type="file" 
+                        onChange={handleFileChange} 
+                        accept=".xlsx,.xls,.csv" 
+                        className="h-12 text-base"
+                      />
+                    </div>
+                    {arquivo && (
+                      <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
+                        <div className="flex items-center">
+                          <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
+                          <span className="text-green-800 font-medium">Arquivo selecionado: {arquivo.name}</span>
+                        </div>
                       </div>
-                    </TabsContent>
+                    )}
+                  </div>
 
-                    <TabsContent value="erros" className="space-y-4">
-                      <div className="max-h-96 overflow-y-auto">
-                        {erros.map((erro, index) => (
-                          <Card key={index} className="mb-3 border-red-200 bg-red-50">
-                            <CardContent className="p-4">
-                              <div className="flex items-start space-x-3">
-                                <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
-                                <div className="flex-1">
-                                  <h4 className="font-semibold text-red-700">Linha {erro.linha}</h4>
-                                  <ul className="text-sm text-red-600 mt-1">
-                                    {erro.erros.map((msg, i) => (
-                                      <li key={i}>• {msg}</li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              </div>
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </div>
-                    </TabsContent>
-                  </Tabs>
-
-                  <div className="flex justify-between mt-6">
-                    <Button variant="outline" onClick={() => setEtapa(1)}>
+                  <div className="flex gap-4">
+                    <Button 
+                      variant="outline" 
+                      onClick={() => setEtapa(1)}
+                      className="flex-1"
+                    >
                       Voltar
                     </Button>
-                    <Button onClick={() => setEtapa(3)} disabled={registrosProcessados.length === 0}>
-                      Continuar para Anexos
-                    </Button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-
-          {/* Etapa 3: Upload de Anexos */}
-          {etapa === 3 && (
-            <div className="space-y-6">
-              <Card className="bg-white border border-gray-200">
-                <CardHeader>
-                  <CardTitle>Anexar Documentos</CardTitle>
-                  <CardDescription>
-                    Anexe um documento para cada registro. Todos os anexos são obrigatórios.
-                  </CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <div className="mb-4">
-                    <div className="flex justify-between text-sm text-gray-600">
-                      <span>
-                        Progresso: {registrosProcessados.filter((r) => r.anexo_enviado).length} de{" "}
-                        {registrosProcessados.length}
-                      </span>
-                      <span>
-                        {Math.round(
-                          (registrosProcessados.filter((r) => r.anexo_enviado).length / registrosProcessados.length) *
-                            100,
-                        )}
-                        %
-                      </span>
-                    </div>
-                    <Progress
-                      value={
-                        (registrosProcessados.filter((r) => r.anexo_enviado).length / registrosProcessados.length) * 100
-                      }
-                      className="mt-2"
-                    />
-                  </div>
-
-                  <div className="max-h-96 overflow-y-auto">
-                    {registrosProcessados.map((registro) => (
-                      <RegistroCard key={registro.id_temp} registro={registro} />
-                    ))}
-                  </div>
-
-                  <div className="flex justify-between mt-6">
-                    <Button variant="outline" onClick={() => setEtapa(2)}>
-                      Voltar
-                    </Button>
-                    <Button
-                      onClick={finalizarImportacao}
-                      disabled={registrosProcessados.some((r) => !r.anexo_enviado) || loading}
+                    <Button 
+                      onClick={processarPlanilha} 
+                      disabled={!arquivo || loading} 
+                      className="flex-1"
+                      size="lg"
                     >
                       {loading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                          Finalizando...
+                          Processando...
                         </>
                       ) : (
                         <>
-                          <CheckCircle className="mr-2 h-4 w-4" />
-                          Finalizar Importação
+                          <FileText className="mr-2 h-4 w-4" />
+                          Processar Planilha
                         </>
                       )}
                     </Button>
                   </div>
-                </CardContent>
-              </Card>
-            </div>
-          )}
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
 
-          {/* Etapa 4: Finalização */}
-          {etapa === 4 && (
-            <div className="space-y-6">
-              <Card className="bg-white border border-gray-200">
-                <CardHeader>
-                  <CardTitle className="flex items-center">
-                    <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                    Finalizando Importação
-                  </CardTitle>
-                  <CardDescription>Criando registros e processando workflows...</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  <Progress value={progresso} className="mb-4" />
-                  <p className="text-center text-gray-600">{progresso < 100 ? "Processando..." : "Concluído!"}</p>
-                </CardContent>
-              </Card>
-            </div>
-          )}
-        </div>
+        {/* Etapa 2: Revisão dos Dados */}
+        {etapa === 2 && (
+          <div className="space-y-6">
+            <Card className="shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-green-50 to-emerald-50 border-b">
+                <CardTitle className="flex items-center">
+                  <CheckCircle className="mr-2 h-5 w-5" />
+                  Revisão dos Dados
+                </CardTitle>
+                <CardDescription>Verifique os dados processados antes de continuar</CardDescription>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="grid grid-cols-3 gap-6 mb-8">
+                  <div className="text-center p-4 bg-blue-50 rounded-lg">
+                    <div className="text-3xl font-bold text-blue-600">{estatisticas.total}</div>
+                    <div className="text-sm text-gray-600">Total de Linhas</div>
+                  </div>
+                  <div className="text-center p-4 bg-green-50 rounded-lg">
+                    <div className="text-3xl font-bold text-green-600">{estatisticas.validos}</div>
+                    <div className="text-sm text-gray-600">Registros Válidos</div>
+                  </div>
+                  <div className="text-center p-4 bg-red-50 rounded-lg">
+                    <div className="text-3xl font-bold text-red-600">{estatisticas.erros}</div>
+                    <div className="text-sm text-gray-600">Erros Encontrados</div>
+                  </div>
+                </div>
+
+                <Tabs defaultValue="validos" className="w-full">
+                  <TabsList className="grid w-full grid-cols-2">
+                    <TabsTrigger value="validos">Registros Válidos ({estatisticas.validos})</TabsTrigger>
+                    <TabsTrigger value="erros">Erros ({estatisticas.erros})</TabsTrigger>
+                  </TabsList>
+
+                  <TabsContent value="validos" className="space-y-4 mt-6">
+                    <div className="max-h-96 overflow-y-auto">
+                      {registrosProcessados.map((registro) => (
+                        <Card key={registro.id_temp} className="mb-3 border-green-200 bg-green-50">
+                          <CardContent className="p-4">
+                            <div className="grid grid-cols-2 gap-4">
+                              <div>
+                                <h4 className="font-semibold text-green-800">{registro.titulo}</h4>
+                                <p className="text-sm text-green-700">Tipo: {registro.tipo_registro}</p>
+                                <p className="text-sm text-green-700">Data: {registro.data_registro}</p>
+                              </div>
+                              <div>
+                                <p className="text-sm text-green-700">Código: {registro.codigo_numero}</p>
+                                <p className="text-sm text-green-700">Obra: {registro.obra_nome}</p>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </TabsContent>
+
+                  <TabsContent value="erros" className="space-y-4 mt-6">
+                    <div className="max-h-96 overflow-y-auto">
+                      {erros.map((erro, index) => (
+                        <Card key={index} className="mb-3 border-red-200 bg-red-50">
+                          <CardContent className="p-4">
+                            <div className="flex items-start space-x-3">
+                              <AlertTriangle className="h-5 w-5 text-red-500 mt-0.5" />
+                              <div className="flex-1">
+                                <h4 className="font-semibold text-red-700">Linha {erro.linha}</h4>
+                                <ul className="text-sm text-red-600 mt-1">
+                                  {erro.erros.map((msg, i) => (
+                                    <li key={i}>• {msg}</li>
+                                  ))}
+                                </ul>
+                              </div>
+                            </div>
+                          </CardContent>
+                        </Card>
+                      ))}
+                    </div>
+                  </TabsContent>
+                </Tabs>
+
+                <div className="flex justify-between mt-8 pt-6 border-t">
+                  <Button variant="outline" onClick={() => setEtapa(1.5)}>
+                    Voltar
+                  </Button>
+                  <Button onClick={() => setEtapa(3)} disabled={registrosProcessados.length === 0} size="lg">
+                    Continuar para Anexos
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Etapa 3: Upload de Anexos */}
+        {etapa === 3 && (
+          <div className="space-y-6">
+            <Card className="shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-purple-50 to-pink-50 border-b">
+                <CardTitle className="flex items-center">
+                  <Upload className="mr-2 h-5 w-5" />
+                  Anexar Documentos
+                </CardTitle>
+                <CardDescription>
+                  Anexe um documento para cada registro. Todos os anexos são obrigatórios.
+                </CardDescription>
+              </CardHeader>
+              <CardContent className="p-8">
+                <div className="mb-6">
+                  <div className="flex justify-between text-sm text-gray-600 mb-2">
+                    <span>
+                      Progresso: {registrosProcessados.filter((r) => r.anexo_enviado).length} de{" "}
+                      {registrosProcessados.length}
+                    </span>
+                    <span>
+                      {Math.round(
+                        (registrosProcessados.filter((r) => r.anexo_enviado).length / registrosProcessados.length) *
+                          100,
+                      )}
+                      %
+                    </span>
+                  </div>
+                  <Progress
+                    value={
+                      (registrosProcessados.filter((r) => r.anexo_enviado).length / registrosProcessados.length) * 100
+                    }
+                    className="h-3"
+                  />
+                </div>
+
+                <div className="max-h-96 overflow-y-auto space-y-4">
+                  {registrosProcessados.map((registro) => (
+                    <RegistroCard key={registro.id_temp} registro={registro} />
+                  ))}
+                </div>
+
+                <div className="flex justify-between mt-8 pt-6 border-t">
+                  <Button variant="outline" onClick={() => setEtapa(2)}>
+                    Voltar
+                  </Button>
+                  <Button
+                    onClick={finalizarImportacao}
+                    disabled={registrosProcessados.some((r) => !r.anexo_enviado) || loading}
+                    size="lg"
+                  >
+                    {loading ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Finalizando...
+                      </>
+                    ) : (
+                      <>
+                        <CheckCircle className="mr-2 h-4 w-4" />
+                        Finalizar Importação
+                      </>
+                    )}
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          </div>
+        )}
+
+        {/* Etapa 4: Finalização */}
+        {etapa === 4 && (
+          <div className="space-y-6">
+            <Card className="shadow-lg">
+              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+                <CardTitle className="flex items-center">
+                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                  Finalizando Importação
+                </CardTitle>
+                <CardDescription>Criando registros e processando workflows...</CardDescription>
+              </CardHeader>
+              <CardContent className="p-8 text-center">
+                <div className="mb-6">
+                  <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
+                    <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+                  </div>
+                  <h3 className="text-xl font-semibold mb-2">Processando...</h3>
+                  <p className="text-gray-600">Aguarde enquanto finalizamos a importação</p>
+                </div>
+                
+                <Progress value={progresso} className="h-3 mb-4" />
+                <p className="text-gray-600">{progresso < 100 ? "Processando..." : "Concluído!"}</p>
+              </CardContent>
+            </Card>
+          </div>
+        )}
       </div>
     </div>
   )
