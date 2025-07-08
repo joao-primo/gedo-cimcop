@@ -11,12 +11,14 @@ import logging
 from datetime import datetime, timedelta
 from flask_limiter.util import get_remote_address
 from extensions import limiter
+from flask_wtf.csrf import generate_csrf
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
+csrf_bp = Blueprint('csrf', __name__)
 
 
 def token_required(f):
@@ -451,3 +453,11 @@ def delete_user(current_user, user_id):
         db.session.rollback()
         logger.error(f"Erro em delete_user: {str(e)}")
         return jsonify({'message': 'Erro interno do servidor'}), 500
+
+
+@csrf_bp.route('/csrf-token', methods=['GET'])
+def get_csrf_token():
+    token = generate_csrf()
+    response = jsonify({'csrf_token': token})
+    response.set_cookie('csrf_token', token, httponly=False, samesite='Lax')
+    return response

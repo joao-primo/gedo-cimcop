@@ -4,7 +4,7 @@ from routes.dashboard import dashboard_bp
 from routes.registros import registros_bp
 from routes.tipos_registro import tipos_registro_bp
 from routes.obras import obras_bp
-from routes.auth import auth_bp
+from routes.auth import auth_bp, csrf_bp
 from routes.user import user_bp
 from routes.configuracoes import configuracoes_bp, init_configuracoes
 from routes.importacao import importacao_bp
@@ -98,6 +98,7 @@ def create_app(config_name=None):
     # Registrar blueprints
     app.register_blueprint(user_bp, url_prefix='/api/users')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
+    app.register_blueprint(csrf_bp, url_prefix='/api')
     app.register_blueprint(password_reset_bp, url_prefix='/api')
     app.register_blueprint(obras_bp, url_prefix='/api/obras')
     app.register_blueprint(tipos_registro_bp, url_prefix='/api/tipos-registro')
