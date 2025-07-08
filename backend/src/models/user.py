@@ -42,7 +42,12 @@ class User(db.Model):
     def check_password(self, password):
         if not self.password_hash:
             return False
-        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
+        try:
+            return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Erro ao verificar senha (possível hash antigo ou corrompido): {e}")
+            return False
 
     def set_password(self, new_password, changed_by_admin=False):
         """Define nova senha com controles de segurança usando bcrypt"""

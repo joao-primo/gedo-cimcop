@@ -74,7 +74,7 @@ export const authAPI = {
   me: () => api.get("/auth/me"),
   logout: () => api.post("/auth/logout"),
   forgotPassword: (email) => api.post("/forgot-password", { email }),
-  resetPassword: (token, newPassword) => api.post("/reset-password", { token, new_password: newPassword }),
+  resetPassword: (token, newPassword) => api.post("/reset-password", { token, password: newPassword }),
   changePassword: (data) => api.post("/auth/change-password", data),
   getPasswordStatus: () => api.get("/auth/password-status"),
 }
