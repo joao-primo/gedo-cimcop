@@ -26,7 +26,7 @@ from sqlalchemy import text
 import os
 import sys
 import logging
-from flask_seasurf import SeaSurf
+from flask_wtf import CSRFProtect
 from extensions import limiter
 from flask_limiter.util import get_remote_address
 
@@ -173,7 +173,7 @@ def create_app(config_name=None):
     def too_large(error):
         return {'message': 'Arquivo muito grande'}, 413
 
-    csrf = SeaSurf(app)
+    csrf = CSRFProtect(app)
 
     limiter.init_app(app)
 
