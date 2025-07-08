@@ -642,7 +642,7 @@ const Pesquisa = () => {
                             <TableCell className="py-4">
                               <div className="flex items-center text-sm">
                                 <Building2 className="h-3 w-3 mr-2 text-gray-400" />
-                                Obra #{registro.obra_id}
+                                {registro.obra_nome || `Obra #${registro.obra_id}`}
                               </div>
                             </TableCell>
                           )}

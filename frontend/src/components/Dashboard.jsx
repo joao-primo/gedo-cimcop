@@ -434,7 +434,7 @@ const Dashboard = () => {
             {user?.role === "usuario_padrao" && user?.obra_id && (
               <Badge variant="secondary" className="ml-2">
                 <Building2 className="h-3 w-3 mr-1" />
-                Obra #{user.obra_id}
+                {filtros.obras.find((obra) => obra.id === user.obra_id)?.nome || `Obra #${user.obra_id}`}
               </Badge>
             )}
           </p>
