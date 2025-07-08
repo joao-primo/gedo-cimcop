@@ -114,7 +114,7 @@ export const registrosAPI = {
   atualizar: (id, data) => api.put(`/registros/${id}`, data),
   deletar: (id) => api.delete(`/registros/${id}`),
   // ← CORREÇÃO CRÍTICA: Melhor tratamento do filename no download
-  downloadAnexo: async (id) => {
+  downloadAnexo: async (id, nomeOriginal = null) => {
     try {
       console.log("🔽 Baixando arquivo via backend proxy:", `/api/registros/${id}/download`)
 
@@ -125,13 +125,17 @@ export const registrosAPI = {
 
       // ← CORREÇÃO CRÍTICA: Melhor extração do filename
       const contentDisposition = response.headers["content-disposition"]
-      let filename = `anexo_${id}`
+      let filename = nomeOriginal || `anexo_${id}`
 
       if (contentDisposition) {
         // Tentar extrair filename do header Content-Disposition
         const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
         if (filenameMatch) {
-          filename = filenameMatch[1].replace(/['"]/g, "") // Remover aspas
+          const extractedFilename = filenameMatch[1].replace(/['"]/g, "") // Remover aspas
+          // Usar o nome extraído se for válido
+          if (extractedFilename && extractedFilename !== "null" && extractedFilename !== "undefined") {
+            filename = extractedFilename
+          }
         }
       }
 

@@ -294,9 +294,9 @@ const Pesquisa = () => {
       setDownloadingId(registroId)
       setError("")
 
-      console.log("Baixando arquivo do registro:", registroId)
+      console.log("Baixando arquivo do registro:", registroId, "Nome original:", nomeArquivo)
 
-      const result = await registrosAPI.downloadAnexo(registroId)
+      const result = await registrosAPI.downloadAnexo(registroId, nomeArquivo)
 
       console.log("Download concluído:", result.filename)
 
