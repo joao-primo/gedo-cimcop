@@ -139,14 +139,26 @@ def create_app(config_name=None):
 
     @app.after_request
     def security_headers(response):
-        """Adiciona headers de segurança"""
-        # Headers CORS adicionais apenas se necessário
+        """Adiciona headers de segurança e CORS"""
+        # Headers CORS para todas as respostas
         try:
             origin = request.headers.get('Origin')
-            if origin and config_name == 'production':
-                if origin.endswith('.vercel.app') or origin in ['https://gedo-cimcop.vercel.app']:
+            if origin:
+                if config_name == 'production':
+                    allowed_origins = [
+                        'https://gedo-cimcop.vercel.app',
+                        'https://gedo-cimcop-frontend.vercel.app'
+                    ]
+                    if origin in allowed_origins or origin.endswith('.vercel.app'):
+                        response.headers['Access-Control-Allow-Origin'] = origin
+                        response.headers['Access-Control-Allow-Credentials'] = 'true'
+                else:
                     response.headers['Access-Control-Allow-Origin'] = origin
                     response.headers['Access-Control-Allow-Credentials'] = 'true'
+                
+                # Headers CORS adicionais
+                response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,X-CSRFToken'
         except Exception as e:
             # Se houver erro, apenas log e continue
             logger.debug(f"Erro ao processar headers CORS: {e}")
@@ -168,18 +180,70 @@ def create_app(config_name=None):
     def internal_error(error):
         db.session.rollback()
         logger.error(f"Erro interno: {str(error)}")
-        return {'message': 'Erro interno do servidor'}, 500
+        
+        # Garantir que headers CORS sejam enviados mesmo em erro
+        response = jsonify({'message': 'Erro interno do servidor'})
+        response.status_code = 500
+        
+        # Aplicar headers CORS manualmente
+        try:
+            origin = request.headers.get('Origin')
+            if origin:
+                if config_name == 'production':
+                    allowed_origins = [
+                        'https://gedo-cimcop.vercel.app',
+                        'https://gedo-cimcop-frontend.vercel.app'
+                    ]
+                    if origin in allowed_origins or origin.endswith('.vercel.app'):
+                        response.headers['Access-Control-Allow-Origin'] = origin
+                        response.headers['Access-Control-Allow-Credentials'] = 'true'
+                else:
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+        except Exception as e:
+            logger.debug(f"Erro ao aplicar CORS em erro 500: {e}")
+        
+        return response
 
     @app.errorhandler(413)
     def too_large(error):
-        return {'message': 'Arquivo muito grande'}, 413
+        # Garantir que headers CORS sejam enviados mesmo em erro
+        response = jsonify({'message': 'Arquivo muito grande'})
+        response.status_code = 413
+        
+        # Aplicar headers CORS manualmente
+        try:
+            origin = request.headers.get('Origin')
+            if origin:
+                if config_name == 'production':
+                    allowed_origins = [
+                        'https://gedo-cimcop.vercel.app',
+                        'https://gedo-cimcop-frontend.vercel.app'
+                    ]
+                    if origin in allowed_origins or origin.endswith('.vercel.app'):
+                        response.headers['Access-Control-Allow-Origin'] = origin
+                        response.headers['Access-Control-Allow-Credentials'] = 'true'
+                else:
+                    response.headers['Access-Control-Allow-Origin'] = origin
+                    response.headers['Access-Control-Allow-Credentials'] = 'true'
+        except Exception as e:
+            logger.debug(f"Erro ao aplicar CORS em erro 413: {e}")
+        
+        return response
 
     # Middleware customizado para validar CSRF stateless
     @app.before_request
     def check_csrf():
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
-            # Exceções: endpoints públicos, login, etc, se necessário
-            if request.endpoint in ['csrf.get_csrf_token']:
+            # Exceções: endpoints públicos, login, etc
+            public_endpoints = [
+                'csrf.get_csrf_token',
+                'auth.login',
+                'password_reset.forgot_password',
+                'password_reset.reset_password',
+                'password_reset.validate_reset_token'
+            ]
+            if request.endpoint in public_endpoints:
                 return
             token = request.headers.get('X-CSRFToken') or request.cookies.get('csrf_token')
             if not token or not validate_csrf_token(token):
@@ -480,6 +544,7 @@ def serve(path):
 
 
 @app.route('/api/health', methods=['GET'])
+@limiter.exempt  # Excluir do rate limiting
 def health_check():
     """Verificação de saúde da API"""
     return {
