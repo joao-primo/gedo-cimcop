@@ -7,6 +7,8 @@ from flask import request, jsonify
 import logging
 import re
 from collections import defaultdict
+from itsdangerous import URLSafeTimedSerializer, BadSignature, SignatureExpired
+from flask import current_app
 
 logger = logging.getLogger(__name__)
 
@@ -101,3 +103,16 @@ def validate_password_strength(password):
         return False, "Senha deve ter pelo menos 3 caracteres"
 
     return True, "Senha válida"
+
+
+def generate_csrf_token():
+    s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    return s.dumps('csrf', salt='csrf-token')
+
+def validate_csrf_token(token, max_age=3600):
+    s = URLSafeTimedSerializer(current_app.config['SECRET_KEY'])
+    try:
+        data = s.loads(token, salt='csrf-token', max_age=max_age)
+        return data == 'csrf'
+    except (BadSignature, SignatureExpired):
+        return False

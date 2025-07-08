@@ -3,7 +3,7 @@ from werkzeug.security import check_password_hash
 from models.user import User, db
 from models.obra import Obra
 from utils.validators import ValidationError, validar_email, validar_senha, validar_username, validar_role, validar_json_data
-from utils.security import audit_log, security_manager
+from utils.security import audit_log, security_manager, generate_csrf_token
 from functools import wraps
 import jwt
 import os
@@ -457,8 +457,7 @@ def delete_user(current_user, user_id):
 
 @csrf_bp.route('/csrf-token', methods=['GET'])
 def get_csrf_token():
-    session['csrf'] = True  # Força a criação de sessão
-    token = generate_csrf()
+    token = generate_csrf_token()
     response = jsonify({'csrf_token': token})
     response.set_cookie('csrf_token', token, httponly=False, samesite='Lax')
     return response

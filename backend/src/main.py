@@ -21,14 +21,14 @@ from models.audit_log import AuditLog
 from models.classificacao import Classificacao
 from config import config
 from flask_cors import CORS
-from flask import Flask, send_from_directory, request
+from flask import Flask, send_from_directory, request, jsonify
 from sqlalchemy import text
 import os
 import sys
 import logging
-from flask_wtf import CSRFProtect
 from extensions import limiter
 from flask_limiter.util import get_remote_address
+from utils.security import validate_csrf_token
 
 # Configurar logging estruturado
 logging.basicConfig(
@@ -174,7 +174,16 @@ def create_app(config_name=None):
     def too_large(error):
         return {'message': 'Arquivo muito grande'}, 413
 
-    csrf = CSRFProtect(app)
+    # Middleware customizado para validar CSRF stateless
+    @app.before_request
+    def check_csrf():
+        if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
+            # Exceções: endpoints públicos, login, etc, se necessário
+            if request.endpoint in ['csrf.get_csrf_token']:
+                return
+            token = request.headers.get('X-CSRFToken') or request.cookies.get('csrf_token')
+            if not token or not validate_csrf_token(token):
+                return jsonify({'message': 'CSRF token missing or invalid'}), 400
 
     limiter.init_app(app)
 
