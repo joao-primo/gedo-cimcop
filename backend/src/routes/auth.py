@@ -10,15 +10,13 @@ import os
 import logging
 from datetime import datetime, timedelta
 from flask_limiter.util import get_remote_address
-from flask_limiter import Limiter
+from main import limiter
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
-
-limiter = Limiter()
 
 
 def token_required(f):

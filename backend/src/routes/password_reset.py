@@ -6,7 +6,7 @@ import re
 import logging
 from datetime import datetime, timedelta
 from flask_limiter.util import get_remote_address
-from flask_limiter import Limiter
+from main import limiter
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -16,8 +16,6 @@ password_reset_bp = Blueprint('password_reset', __name__)
 
 # Rate limiting simples (em produção, use Redis)
 reset_attempts = {}
-
-limiter = Limiter()
 
 
 def validar_email(email):

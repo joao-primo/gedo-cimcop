@@ -16,6 +16,7 @@ from flask_limiter.util import get_remote_address
 from flask_limiter import Limiter
 import bleach
 import logging
+from main import limiter
 
 registros_bp = Blueprint('registros', __name__)
 registros_bp.strict_slashes = False
