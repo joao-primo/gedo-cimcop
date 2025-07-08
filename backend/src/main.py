@@ -78,7 +78,7 @@ def create_app(config_name=None):
              supports_credentials=True,
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              allow_headers=["Content-Type",
-                            "Authorization", "X-Requested-With"],
+                            "Authorization", "X-Requested-With", "X-CSRFToken"],
              expose_headers=["Content-Range", "X-Content-Range"])
     else:
         # Desenvolvimento - mais permissivo
@@ -89,7 +89,7 @@ def create_app(config_name=None):
              supports_credentials=True,
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
              allow_headers=["Content-Type",
-                            "Authorization", "X-Requested-With"],
+                            "Authorization", "X-Requested-With", "X-CSRFToken"],
              expose_headers=["Content-Range", "X-Content-Range"])
 
     # Inicializar extensões
