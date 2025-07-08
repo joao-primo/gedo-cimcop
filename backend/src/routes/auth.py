@@ -1,4 +1,4 @@
-from flask import Blueprint, request, jsonify
+from flask import Blueprint, request, jsonify, session
 from werkzeug.security import check_password_hash
 from models.user import User, db
 from models.obra import Obra
@@ -457,6 +457,7 @@ def delete_user(current_user, user_id):
 
 @csrf_bp.route('/csrf-token', methods=['GET'])
 def get_csrf_token():
+    session['csrf'] = True  # Força a criação de sessão
     token = generate_csrf()
     response = jsonify({'csrf_token': token})
     response.set_cookie('csrf_token', token, httponly=False, samesite='Lax')
