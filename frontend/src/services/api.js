@@ -57,8 +57,12 @@ api.interceptors.response.use(
   (error) => {
     console.error("Erro na resposta:", error.response?.status, error.config?.url, error.response?.data)
 
-    // Se token expirou, redirecionar para login
-    if (error.response?.status === 401) {
+    // Se token expirou, redirecionar para login, exceto se for a própria rota de login
+    if (
+      error.response?.status === 401 &&
+      error.config?.url &&
+      !error.config.url.includes("/auth/login")
+    ) {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
       window.location.href = "/login"
