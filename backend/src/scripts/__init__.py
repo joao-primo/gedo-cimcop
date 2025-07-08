@@ -1,6 +1,6 @@
 #Modulo
 
-# Script temporário para criar usuário de teste
+# Script temporário para criar usuário admin padrão
 if __name__ == "__main__":
     import sys
     import os
@@ -19,20 +19,20 @@ if __name__ == "__main__":
     from config import config
 
     app = Flask(__name__)
-    app.config.from_object(config['development'])
+    app.config.from_object(config['production'])  # Usar produção!
     db.init_app(app)
 
     with app.app_context():
-        # Criar tabelas apenas se não existirem (apenas para dev/local)
+        # Verificar se a tabela users existe
         try:
             db.session.execute('SELECT 1 FROM users LIMIT 1')
         except Exception:
             print('Tabelas não encontradas, criando todas as tabelas...')
             db.create_all()
 
-        email = "teste@gedo.com"
-        username = "teste"
-        password = "teste123"
+        email = "admin@gedo.com"
+        username = "admin"
+        password = "admin123"
         user = User.query.filter_by(email=email).first()
         if user:
             print(f"Usuário {email} já existe.")
