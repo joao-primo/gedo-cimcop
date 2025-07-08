@@ -6,7 +6,7 @@ import re
 import logging
 from datetime import datetime, timedelta
 from flask_limiter.util import get_remote_address
-from main import limiter
+from extensions import limiter
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)

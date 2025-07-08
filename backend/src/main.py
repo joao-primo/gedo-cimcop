@@ -27,7 +27,7 @@ import os
 import sys
 import logging
 from flask_seasurf import SeaSurf
-from flask_limiter import Limiter
+from extensions import limiter
 from flask_limiter.util import get_remote_address
 
 # Configurar logging estruturado
@@ -175,7 +175,6 @@ def create_app(config_name=None):
 
     csrf = SeaSurf(app)
 
-    limiter = Limiter(key_func=get_remote_address, default_limits=["200 per day", "50 per hour"])
     limiter.init_app(app)
 
     return app
