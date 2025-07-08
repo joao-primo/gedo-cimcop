@@ -57,28 +57,32 @@ const Dashboard = () => {
   const [loadingFiltros, setLoadingFiltros] = useState(false)
 
   const carregarFiltros = async () => {
-    if (isAdmin()) {
-      try {
-        setLoadingFiltros(true)
-        console.log("Carregando filtros para dashboard...")
-        const response = await pesquisaAPI.getFiltros()
-        console.log("Filtros carregados:", response.data)
+    try {
+      setLoadingFiltros(true)
+      console.log("Carregando filtros para dashboard...")
+      const response = await pesquisaAPI.getFiltros()
+      console.log("Filtros carregados:", response.data)
 
-        setFiltros({
-          obras: response.data.obras || [],
-          tipos_registro: response.data.tipos_registro || [],
-          autores: response.data.autores || [],
-        })
-      } catch (error) {
-        console.error("Erro ao carregar filtros:", error)
-        setFiltros({
-          obras: [],
-          tipos_registro: [],
-          autores: [],
-        })
-      } finally {
-        setLoadingFiltros(false)
+      // Para usuário padrão, filtrar apenas a obra associada
+      let obras = response.data.obras || []
+      if (!isAdmin() && user?.obra_id) {
+        obras = obras.filter((obra) => obra.id === user.obra_id)
       }
+
+      setFiltros({
+        obras,
+        tipos_registro: response.data.tipos_registro || [],
+        autores: response.data.autores || [],
+      })
+    } catch (error) {
+      console.error("Erro ao carregar filtros:", error)
+      setFiltros({
+        obras: [],
+        tipos_registro: [],
+        autores: [],
+      })
+    } finally {
+      setLoadingFiltros(false)
     }
   }
 
@@ -167,9 +171,7 @@ const Dashboard = () => {
   useEffect(() => {
     if (user) {
       console.log("Usuário logado, carregando dashboard para:", user)
-      if (isAdmin()) {
-        carregarFiltros()
-      }
+      carregarFiltros()
       carregarDados(obraSelecionada === "todas" ? null : obraSelecionada)
     }
   }, [user, obraSelecionada])
@@ -625,7 +627,7 @@ const Dashboard = () => {
         </Card>
 
         {/* Gráfico de Obras */}
-        {isAdmin() && registrosPorObra.length > 0 && (
+        {registrosPorObra.length > 0 && (
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center">

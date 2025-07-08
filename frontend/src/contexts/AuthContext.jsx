@@ -78,6 +78,12 @@ export const AuthProvider = ({ children }) => {
       }
     } catch (error) {
       console.error("Erro no login:", error)
+      if (error.response?.status === 401) {
+        return {
+          success: false,
+          message: "Credenciais inválidas. Verifique seu e-mail e senha.",
+        }
+      }
       return {
         success: false,
         message: error.response?.data?.message || "Erro ao fazer login",
