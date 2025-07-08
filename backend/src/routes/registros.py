@@ -11,6 +11,11 @@ import uuid
 import requests
 import tempfile
 import mimetypes
+import magic
+from flask_limiter.util import get_remote_address
+from flask_limiter import Limiter
+import bleach
+import logging
 
 registros_bp = Blueprint('registros', __name__)
 registros_bp.strict_slashes = False
@@ -20,26 +25,41 @@ UPLOAD_FOLDER = os.path.join(os.path.dirname(
     os.path.dirname(__file__)), 'uploads')
 ALLOWED_EXTENSIONS = {'txt', 'pdf', 'png', 'jpg',
                       'jpeg', 'gif', 'doc', 'docx', 'xls', 'xlsx'}
+ALLOWED_MIMETYPES = {
+    'text/plain', 'application/pdf', 'image/png', 'image/jpeg', 'image/gif',
+    'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    'application/vnd.ms-excel', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+}
+MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 
+logger = logging.getLogger("gedo.registros")
 
-def allowed_file(filename):
-    return '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+def allowed_file(filename, mimetype=None):
+    ext_ok = '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    if mimetype:
+        return ext_ok and mimetype in ALLOWED_MIMETYPES
+    return ext_ok
 
 
 def ensure_upload_folder():
     """Garantir que a pasta de uploads existe - MANTIDO para compatibilidade"""
     if not os.path.exists(UPLOAD_FOLDER):
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
-        print(f"📁 Pasta de uploads criada: {UPLOAD_FOLDER}")
+        logger.info(f"📁 Pasta de uploads criada: {UPLOAD_FOLDER}")
 
 
 def save_file_legacy(file):
     """MANTIDO: Salva arquivo localmente (sistema antigo)"""
-    if file and allowed_file(file.filename):
+    if file and allowed_file(file.filename, file.mimetype):
         ensure_upload_folder()
         filename = secure_filename(file.filename)
         unique_filename = f"{uuid.uuid4()}_{filename}"
         file_path = os.path.join(UPLOAD_FOLDER, unique_filename)
+        file.seek(0, 2)
+        size = file.tell()
+        file.seek(0)
+        if size > MAX_FILE_SIZE:
+            raise ValueError('Arquivo muito grande (máximo 16MB)')
         file.save(file_path)
         return {
             'caminho_anexo': file_path,
@@ -52,38 +72,44 @@ def save_file_legacy(file):
 
 def save_file_blob(file):
     """NOVO: Salva arquivo no Vercel Blob"""
-    if not file or not allowed_file(file.filename):
+    if not file or not allowed_file(file.filename, file.mimetype):
         return None
-
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    if size > MAX_FILE_SIZE:
+        raise ValueError('Arquivo muito grande (máximo 16MB)')
     try:
         blob_data = blob_service.upload_file(file)
         if blob_data:
             return {
                 'blob_url': blob_data['url'],
                 'blob_pathname': blob_data['pathname'],
-                'nome_arquivo_original': blob_data['filename'],
+                'nome_arquivo_original': secure_filename(blob_data['filename']),
                 'formato_arquivo': blob_data.get('file_extension', blob_data['filename'].rsplit('.', 1)[1].lower() if '.' in blob_data['filename'] else None),
                 'tamanho_arquivo': blob_data['size']
             }
     except Exception as e:
-        print(f"❌ Erro no upload para Blob: {str(e)}")
-
+        logger.error(f"❌ Erro no upload para Blob: {str(e)}")
     return None
 
 
 def save_file(file):
     """Função principal: tenta Blob primeiro, fallback para local"""
-    if not file or not allowed_file(file.filename):
+    if not file or not allowed_file(file.filename, file.mimetype):
         return None
-
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    if size > MAX_FILE_SIZE:
+        raise ValueError('Arquivo muito grande (máximo 16MB)')
     # Tentar Vercel Blob primeiro
     blob_result = save_file_blob(file)
     if blob_result:
-        print(f"✅ Arquivo salvo no Vercel Blob: {blob_result['blob_url']}")
+        logger.info(f"✅ Arquivo salvo no Vercel Blob: {blob_result['blob_url']}")
         return blob_result
-
     # Fallback para sistema local
-    print("⚠️ Fallback para sistema local")
+    logger.warning("⚠️ Fallback para sistema local")
     return save_file_legacy(file)
 
 
@@ -113,7 +139,7 @@ def validate_registro_data(data, files):
 
         if size > 16 * 1024 * 1024:
             errors.append('Arquivo muito grande (máximo 16MB)')
-        if not allowed_file(file.filename):
+        if not allowed_file(file.filename, file.mimetype):
             errors.append('Tipo de arquivo não permitido')
 
     return errors
@@ -124,24 +150,24 @@ def validate_registro_data(data, files):
 def debug_registro(current_user, registro_id):
     """Debug de registro para troubleshooting"""
     try:
-        print(f"🔍 DEBUG: Buscando registro ID {registro_id}")
+        logger.info(f"🔍 DEBUG: Buscando registro ID {registro_id}")
 
         registro = Registro.query.get(registro_id)
         if not registro:
-            print(f"❌ DEBUG: Registro {registro_id} não encontrado")
+            logger.error(f"❌ DEBUG: Registro {registro_id} não encontrado")
             return jsonify({
                 'message': f'Registro {registro_id} não encontrado',
                 'exists': False
             }), 404
 
-        print(f"✅ DEBUG: Registro {registro_id} encontrado")
-        print(f"   - Título: {registro.titulo}")
-        print(f"   - Tem blob_url: {bool(registro.blob_url)}")
-        print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
-        print(f"   - Blob URL: {registro.blob_url}")
-        print(f"   - Caminho anexo: {registro.caminho_anexo}")
-        print(f"   - Formato arquivo: {registro.formato_arquivo}")
-        print(f"   - Nome original: {registro.nome_arquivo_original}")
+        logger.info(f"✅ DEBUG: Registro {registro_id} encontrado")
+        logger.info(f"   - Título: {registro.titulo}")
+        logger.info(f"   - Tem blob_url: {bool(registro.blob_url)}")
+        logger.info(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
+        logger.info(f"   - Blob URL: {registro.blob_url}")
+        logger.info(f"   - Caminho anexo: {registro.caminho_anexo}")
+        logger.info(f"   - Formato arquivo: {registro.formato_arquivo}")
+        logger.info(f"   - Nome original: {registro.nome_arquivo_original}")
 
         return jsonify({
             'message': 'Registro encontrado',
@@ -160,7 +186,7 @@ def debug_registro(current_user, registro_id):
         }), 200
 
     except Exception as e:
-        print(f"❌ DEBUG: Erro ao buscar registro {registro_id}: {str(e)}")
+        logger.error(f"❌ DEBUG: Erro ao buscar registro {registro_id}: {str(e)}")
         return jsonify({
             'message': f'Erro interno: {str(e)}',
             'exists': False
@@ -172,34 +198,34 @@ def debug_registro(current_user, registro_id):
 @obra_access_required
 def download_anexo(current_user, registro_id):
     try:
-        print(f"🔽 DOWNLOAD: Iniciando download do registro {registro_id}")
-        print(f"   - Usuário: {current_user.username} (ID: {current_user.id})")
+        logger.info(f"🔽 DOWNLOAD: Iniciando download do registro {registro_id}")
+        logger.info(f"   - Usuário: {current_user.username} (ID: {current_user.id})")
 
         registro = Registro.query.get(registro_id)
         if not registro:
-            print(f"❌ DOWNLOAD: Registro {registro_id} não encontrado")
+            logger.error(f"❌ DOWNLOAD: Registro {registro_id} não encontrado")
             return jsonify({'message': 'Registro não encontrado'}), 404
 
-        print(f"✅ DOWNLOAD: Registro {registro_id} encontrado")
-        print(f"   - Título: {registro.titulo}")
-        print(f"   - Nome original: {registro.nome_arquivo_original}")
-        print(f"   - Formato: {registro.formato_arquivo}")
+        logger.info(f"✅ DOWNLOAD: Registro {registro_id} encontrado")
+        logger.info(f"   - Título: {registro.titulo}")
+        logger.info(f"   - Nome original: {registro.nome_arquivo_original}")
+        logger.info(f"   - Formato: {registro.formato_arquivo}")
 
         # Verificar permissões
         if current_user.role == 'usuario_padrao' and registro.obra_id != current_user.obra_id:
-            print(
+            logger.error(
                 f"❌ DOWNLOAD: Acesso negado - usuário obra {current_user.obra_id} != registro obra {registro.obra_id}")
             return jsonify({'message': 'Acesso negado a este registro'}), 403
 
-        print(f"✅ DOWNLOAD: Permissões OK")
-        print(f"   - Tem blob_url: {bool(registro.blob_url)}")
-        print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
+        logger.info(f"✅ DOWNLOAD: Permissões OK")
+        logger.info(f"   - Tem blob_url: {bool(registro.blob_url)}")
+        logger.info(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
 
         # ← CORRIGIDO: Melhor detecção de tipo e nome do arquivo
         if registro.blob_url:
             try:
-                print(f"🔗 DOWNLOAD: Fazendo proxy do Vercel Blob")
-                print(f"   - URL: {registro.blob_url}")
+                logger.info(f"🔗 DOWNLOAD: Fazendo proxy do Vercel Blob")
+                logger.info(f"   - URL: {registro.blob_url}")
 
                 # Headers para requisição
                 headers = {
@@ -207,16 +233,16 @@ def download_anexo(current_user, registro_id):
                     'Accept': '*/*'
                 }
 
-                print("📡 DOWNLOAD: Fazendo requisição para Vercel Blob...")
+                logger.info("📡 DOWNLOAD: Fazendo requisição para Vercel Blob...")
                 response = requests.get(
                     registro.blob_url, headers=headers, stream=True, timeout=60)
                 response.raise_for_status()
 
-                print(
+                logger.info(
                     f"✅ DOWNLOAD: Resposta do Vercel Blob: {response.status_code}")
-                print(
+                logger.info(
                     f"   - Content-Type original: {response.headers.get('content-type')}")
-                print(
+                logger.info(
                     f"   - Content-Length: {response.headers.get('content-length')}")
 
                 # ← CORREÇÃO CRÍTICA: Melhor detecção de Content-Type e nome do arquivo
@@ -229,7 +255,7 @@ def download_anexo(current_user, registro_id):
                     file_extension = registro.nome_arquivo_original.rsplit('.', 1)[
                         1].lower()
 
-                print(f"📎 DOWNLOAD: Extensão detectada: {file_extension}")
+                logger.info(f"📎 DOWNLOAD: Extensão detectada: {file_extension}")
 
                 # 2. Determinar Content-Type correto baseado na extensão
                 content_type_map = {
@@ -271,7 +297,7 @@ def download_anexo(current_user, registro_id):
                         if guessed_type:
                             content_type = guessed_type
 
-                print(f"📎 DOWNLOAD: Content-Type final: {content_type}")
+                logger.info(f"📎 DOWNLOAD: Content-Type final: {content_type}")
 
                 # 3. Determinar nome do arquivo com extensão correta
                 if registro.nome_arquivo_original:
@@ -292,7 +318,7 @@ def download_anexo(current_user, registro_id):
                     else:
                         filename = f"anexo_{registro_id}"
 
-                print(f"📎 DOWNLOAD: Nome do arquivo final: {filename}")
+                logger.info(f"📎 DOWNLOAD: Nome do arquivo final: {filename}")
 
                 # 4. Criar resposta streaming com headers corretos
                 def generate():
@@ -301,10 +327,10 @@ def download_anexo(current_user, registro_id):
                             if chunk:
                                 yield chunk
                     except Exception as e:
-                        print(f"❌ DOWNLOAD: Erro no streaming: {str(e)}")
+                        logger.error(f"❌ DOWNLOAD: Erro no streaming: {str(e)}")
                         raise
 
-                print("🚀 DOWNLOAD: Iniciando streaming do arquivo...")
+                logger.info("🚀 DOWNLOAD: Iniciando streaming do arquivo...")
 
                 # ← CORREÇÃO CRÍTICA: Headers mais específicos para forçar download correto
                 response_headers = {
@@ -321,7 +347,7 @@ def download_anexo(current_user, registro_id):
                 if content_length:
                     response_headers['Content-Length'] = content_length
 
-                print(f"📋 DOWNLOAD: Headers da resposta: {response_headers}")
+                logger.info(f"📋 DOWNLOAD: Headers da resposta: {response_headers}")
 
                 return Response(
                     generate(),
@@ -329,24 +355,24 @@ def download_anexo(current_user, registro_id):
                 )
 
             except requests.RequestException as e:
-                print(f"❌ DOWNLOAD: Erro ao baixar do Vercel Blob: {str(e)}")
+                logger.error(f"❌ DOWNLOAD: Erro ao baixar do Vercel Blob: {str(e)}")
                 return jsonify({'message': f'Erro ao acessar arquivo no storage: {str(e)}'}), 500
             except Exception as e:
-                print(f"❌ DOWNLOAD: Erro geral no Blob: {str(e)}")
+                logger.error(f"❌ DOWNLOAD: Erro geral no Blob: {str(e)}")
                 return jsonify({'message': f'Erro interno no download: {str(e)}'}), 500
 
         # Fallback para sistema antigo
         if not registro.caminho_anexo:
-            print("❌ DOWNLOAD: Registro não possui anexo")
+            logger.error("❌ DOWNLOAD: Registro não possui anexo")
             return jsonify({'message': 'Este registro não possui anexo'}), 404
 
-        print(f"📁 DOWNLOAD: Usando sistema local: {registro.caminho_anexo}")
+        logger.info(f"📁 DOWNLOAD: Usando sistema local: {registro.caminho_anexo}")
         if not os.path.exists(registro.caminho_anexo):
-            print(
+            logger.error(
                 f"❌ DOWNLOAD: Arquivo local não encontrado: {registro.caminho_anexo}")
             return jsonify({'message': 'Arquivo não encontrado no servidor'}), 404
 
-        print("✅ DOWNLOAD: Enviando arquivo local")
+        logger.info("✅ DOWNLOAD: Enviando arquivo local")
 
         # ← CORREÇÃO: Melhor detecção para arquivos locais também
         filename = registro.nome_arquivo_original or f'anexo_{registro_id}'
@@ -370,7 +396,7 @@ def download_anexo(current_user, registro_id):
         )
 
     except Exception as e:
-        print(f"❌ DOWNLOAD: Erro geral: {str(e)}")
+        logger.error(f"❌ DOWNLOAD: Erro geral: {str(e)}")
         import traceback
         traceback.print_exc()
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500
@@ -451,48 +477,47 @@ def get_registro(current_user, registro_id):
 
 
 @registros_bp.route('/', methods=['POST'])
+@limiter.limit("10 per minute;100 per hour")
 @token_required
 @obra_access_required
 def create_registro(current_user):
     try:
         # ← CORREÇÃO CRÍTICA: Melhor debug dos dados recebidos
-        print(f"📥 CREATE REGISTRO: Dados recebidos")
-        print(f"   - Form data: {dict(request.form)}")
-        print(f"   - Files: {list(request.files.keys())}")
-        print(
+        logger.info(f"📥 CREATE REGISTRO: Dados recebidos")
+        logger.info(f"   - Form data: {dict(request.form)}")
+        logger.info(f"   - Files: {list(request.files.keys())}")
+        logger.info(
             f"   - User: {current_user.username} (role: {current_user.role})")
 
         # ← CORREÇÃO: Validação mais robusta
         validation_errors = validate_registro_data(request.form, request.files)
         if validation_errors:
-            print(
+            logger.error(
                 f"❌ CREATE REGISTRO: Erros de validação: {validation_errors}")
             return jsonify({'message': '; '.join(validation_errors)}), 400
 
         # ← CORREÇÃO: Extrair dados com validação
-        titulo = request.form.get('titulo', '').strip()
-        tipo_registro = request.form.get('tipo_registro', '').strip()
-        descricao = request.form.get('descricao', '').strip()
+        titulo = bleach.clean(request.form.get('titulo', '').strip())
+        tipo_registro = bleach.clean(request.form.get('tipo_registro', '').strip())
+        descricao = bleach.clean(request.form.get('descricao', '').strip())
         codigo_numero = request.form.get('codigo_numero', '').strip()
         data_registro = request.form.get('data_registro', '').strip()
         obra_id = request.form.get('obra_id')
         tipo_registro_id = request.form.get('tipo_registro_id')
 
         # NOVO: Campos de classificação
-        classificacao_grupo = request.form.get(
-            'classificacao_grupo', '').strip()
-        classificacao_subgrupo = request.form.get(
-            'classificacao_subgrupo', '').strip()
+        classificacao_grupo = bleach.clean(request.form.get('classificacao_grupo', '').strip())
+        classificacao_subgrupo = bleach.clean(request.form.get('classificacao_subgrupo', '').strip())
         classificacao_id = request.form.get('classificacao_id')
 
-        print(f"📋 CREATE REGISTRO: Campos extraídos")
-        print(f"   - titulo: '{titulo}'")
-        print(f"   - tipo_registro: '{tipo_registro}'")
-        print(f"   - descricao: '{descricao[:50]}...'")
-        print(f"   - obra_id: '{obra_id}'")
-        print(f"   - tipo_registro_id: '{tipo_registro_id}'")
-        print(f"   - classificacao_grupo: '{classificacao_grupo}'")
-        print(f"   - classificacao_subgrupo: '{classificacao_subgrupo}'")
+        logger.info(f"📋 CREATE REGISTRO: Campos extraídos")
+        logger.info(f"   - titulo: '{titulo}'")
+        logger.info(f"   - tipo_registro: '{tipo_registro}'")
+        logger.info(f"   - descricao: '{descricao[:50]}...'")
+        logger.info(f"   - obra_id: '{obra_id}'")
+        logger.info(f"   - tipo_registro_id: '{tipo_registro_id}'")
+        logger.info(f"   - classificacao_grupo: '{classificacao_grupo}'")
+        logger.info(f"   - classificacao_subgrupo: '{classificacao_subgrupo}'")
 
         # ← CORREÇÃO: Conversão segura de IDs
         try:
@@ -503,34 +528,34 @@ def create_registro(current_user):
             if classificacao_id:
                 classificacao_id = int(classificacao_id)
         except (ValueError, TypeError) as e:
-            print(f"❌ CREATE REGISTRO: Erro na conversão de IDs: {str(e)}")
+            logger.error(f"❌ CREATE REGISTRO: Erro na conversão de IDs: {str(e)}")
             return jsonify({'message': 'IDs inválidos fornecidos'}), 400
 
         # ← CORREÇÃO: Lógica de obra mais clara
         if current_user.role == 'usuario_padrao':
             obra_id = current_user.obra_id
-            print(f"📍 CREATE REGISTRO: Usuário padrão - usando obra {obra_id}")
+            logger.info(f"📍 CREATE REGISTRO: Usuário padrão - usando obra {obra_id}")
         elif not obra_id:
-            print(f"❌ CREATE REGISTRO: Admin sem obra_id")
+            logger.error(f"❌ CREATE REGISTRO: Admin sem obra_id")
             return jsonify({'message': 'Obra é obrigatória para administradores'}), 400
 
         # Verificar se obra existe
         obra = Obra.query.get(obra_id)
         if not obra:
-            print(f"❌ CREATE REGISTRO: Obra {obra_id} não encontrada")
+            logger.error(f"❌ CREATE REGISTRO: Obra {obra_id} não encontrada")
             return jsonify({'message': 'Obra não encontrada'}), 404
 
-        print(
+        logger.info(
             f"✅ CREATE REGISTRO: Obra encontrada: {obra.nome} (status: {obra.status})")
 
         # Verificar se obra está suspensa
         if obra.status and obra.status.lower() == 'suspensa':
-            print(f"❌ CREATE REGISTRO: Obra suspensa")
+            logger.error(f"❌ CREATE REGISTRO: Obra suspensa")
             return jsonify({'message': 'A obra está suspensa e não pode receber novos registros.'}), 403
 
         # Verificar permissões de acesso à obra
         if current_user.role == 'usuario_padrao' and obra_id != current_user.obra_id:
-            print(f"❌ CREATE REGISTRO: Acesso negado à obra")
+            logger.error(f"❌ CREATE REGISTRO: Acesso negado à obra")
             return jsonify({'message': 'Acesso negado a esta obra'}), 403
 
         # ← CORREÇÃO: Conversão de data mais robusta
@@ -538,10 +563,10 @@ def create_registro(current_user):
         if data_registro:
             try:
                 data_registro_dt = datetime.strptime(data_registro, '%Y-%m-%d')
-                print(
+                logger.info(
                     f"📅 CREATE REGISTRO: Data convertida: {data_registro_dt}")
             except ValueError as e:
-                print(
+                logger.error(
                     f"❌ CREATE REGISTRO: Erro na conversão de data: {str(e)}")
                 return jsonify({'message': 'Formato de data_registro inválido (use YYYY-MM-DD)'}), 400
 
@@ -550,24 +575,24 @@ def create_registro(current_user):
         if 'anexo' in request.files:
             file = request.files['anexo']
             if file and file.filename and file.filename.strip() != '':
-                print(
+                logger.info(
                     f"📤 CREATE REGISTRO: Processando arquivo {file.filename}")
                 try:
                     file_data = save_file(file)
                     if file_data:
                         file_info = file_data
-                        print(
+                        logger.info(
                             f"✅ CREATE REGISTRO: Arquivo processado: {file_data.get('nome_arquivo_original')}")
                     else:
-                        print(f"❌ CREATE REGISTRO: Falha no processamento do arquivo")
+                        logger.error(f"❌ CREATE REGISTRO: Falha no processamento do arquivo")
                         return jsonify({'message': 'Formato de arquivo não permitido ou erro no upload'}), 400
                 except Exception as e:
-                    print(f"❌ CREATE REGISTRO: Erro no upload: {str(e)}")
+                    logger.error(f"❌ CREATE REGISTRO: Erro no upload: {str(e)}")
                     return jsonify({'message': f'Erro no upload do arquivo: {str(e)}'}), 500
 
         # ← CORREÇÃO: Criação do registro com tratamento de erro
         try:
-            print(f"💾 CREATE REGISTRO: Criando registro no banco...")
+            logger.info(f"💾 CREATE REGISTRO: Criando registro no banco...")
             registro = Registro(
                 titulo=titulo,
                 tipo_registro=tipo_registro,
@@ -586,16 +611,16 @@ def create_registro(current_user):
             db.session.add(registro)
             db.session.commit()
 
-            print(
+            logger.info(
                 f"✅ CREATE REGISTRO: Registro criado com sucesso - ID {registro.id}")
-            print(f"   - Tem blob_url: {bool(registro.blob_url)}")
-            print(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
-            print(f"   - Formato: {registro.formato_arquivo}")
-            print(
+            logger.info(f"   - Tem blob_url: {bool(registro.blob_url)}")
+            logger.info(f"   - Tem caminho_anexo: {bool(registro.caminho_anexo)}")
+            logger.info(f"   - Formato: {registro.formato_arquivo}")
+            logger.info(
                 f"   - Classificação: {registro.classificacao_grupo} > {registro.classificacao_subgrupo}")
 
         except Exception as e:
-            print(f"❌ CREATE REGISTRO: Erro ao salvar no banco: {str(e)}")
+            logger.error(f"❌ CREATE REGISTRO: Erro ao salvar no banco: {str(e)}")
             db.session.rollback()
             return jsonify({'message': f'Erro ao salvar registro: {str(e)}'}), 500
 
@@ -604,7 +629,7 @@ def create_registro(current_user):
             from services.email_service import processar_workflow_registro
             processar_workflow_registro(registro, 'criacao')
         except Exception as e:
-            print(f"⚠️ CREATE REGISTRO: Erro no workflow (não crítico): {e}")
+            logger.warning(f"⚠️ CREATE REGISTRO: Erro no workflow (não crítico): {e}")
 
         return jsonify({
             'message': 'Registro criado com sucesso',
@@ -612,7 +637,7 @@ def create_registro(current_user):
         }), 201
 
     except Exception as e:
-        print(f"❌ CREATE REGISTRO: Erro geral: {str(e)}")
+        logger.error(f"❌ CREATE REGISTRO: Erro geral: {str(e)}")
         import traceback
         traceback.print_exc()
         db.session.rollback()
@@ -635,11 +660,11 @@ def update_registro(current_user, registro_id):
             return jsonify({'message': 'Apenas o autor ou administrador pode editar este registro'}), 403
 
         if 'titulo' in request.form:
-            registro.titulo = request.form['titulo']
+            registro.titulo = bleach.clean(request.form['titulo'])
         if 'tipo_registro' in request.form:
-            registro.tipo_registro = request.form['tipo_registro']
+            registro.tipo_registro = bleach.clean(request.form['tipo_registro'])
         if 'descricao' in request.form:
-            registro.descricao = request.form['descricao']
+            registro.descricao = bleach.clean(request.form['descricao'])
         if 'codigo_numero' in request.form:
             registro.codigo_numero = request.form['codigo_numero']
         if 'data_registro' in request.form:
@@ -654,9 +679,9 @@ def update_registro(current_user, registro_id):
 
         # NOVO: Atualizar campos de classificação
         if 'classificacao_grupo' in request.form:
-            registro.classificacao_grupo = request.form['classificacao_grupo']
+            registro.classificacao_grupo = bleach.clean(request.form['classificacao_grupo'])
         if 'classificacao_subgrupo' in request.form:
-            registro.classificacao_subgrupo = request.form['classificacao_subgrupo']
+            registro.classificacao_subgrupo = bleach.clean(request.form['classificacao_subgrupo'])
         if 'classificacao_id' in request.form:
             registro.classificacao_id = request.form.get(
                 'classificacao_id', type=int)

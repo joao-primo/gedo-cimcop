@@ -9,12 +9,16 @@ import jwt
 import os
 import logging
 from datetime import datetime, timedelta
+from flask_limiter.util import get_remote_address
+from flask_limiter import Limiter
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 auth_bp = Blueprint('auth', __name__)
+
+limiter = Limiter()
 
 
 def token_required(f):
@@ -90,6 +94,7 @@ def handle_validation_error(f):
 
 
 @auth_bp.route('/login', methods=['POST'])
+@limiter.limit("5 per minute;20 per hour")
 @handle_validation_error
 def login():
     try:

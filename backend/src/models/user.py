@@ -3,6 +3,7 @@ import jwt
 from werkzeug.security import generate_password_hash, check_password_hash
 import os
 from flask_sqlalchemy import SQLAlchemy
+import bcrypt
 
 db = SQLAlchemy()
 
@@ -31,7 +32,7 @@ class User(db.Model):
     def __init__(self, username, email, password, role='usuario_padrao', obra_id=None, must_change_password=True):
         self.username = username
         self.email = email
-        self.password_hash = generate_password_hash(password)
+        self.set_password(password)
         self.role = role
         self.obra_id = obra_id
         self.must_change_password = must_change_password
@@ -39,11 +40,14 @@ class User(db.Model):
         self.password_changed_by_admin = False
 
     def check_password(self, password):
-        return check_password_hash(self.password_hash, password)
+        if not self.password_hash:
+            return False
+        return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
 
     def set_password(self, new_password, changed_by_admin=False):
-        """Define nova senha com controles de segurança"""
-        self.password_hash = generate_password_hash(new_password)
+        """Define nova senha com controles de segurança usando bcrypt"""
+        salt = bcrypt.gensalt()
+        self.password_hash = bcrypt.hashpw(new_password.encode('utf-8'), salt).decode('utf-8')
         self.password_changed_at = datetime.utcnow()
 
         if changed_by_admin:

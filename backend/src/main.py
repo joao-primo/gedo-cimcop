@@ -26,8 +26,11 @@ from sqlalchemy import text
 import os
 import sys
 import logging
+from flask_seasurf import SeaSurf
+from flask_limiter import Limiter
+from flask_limiter.util import get_remote_address
 
-# Configurar logging
+# Configurar logging estruturado
 logging.basicConfig(
     level=logging.INFO,
     format='%(asctime)s %(levelname)s %(name)s %(message)s'
@@ -169,6 +172,10 @@ def create_app(config_name=None):
     @app.errorhandler(413)
     def too_large(error):
         return {'message': 'Arquivo muito grande'}, 413
+
+    csrf = SeaSurf(app)
+
+    limiter = Limiter(get_remote_address, app=app, default_limits=["200 per day", "50 per hour"])
 
     return app
 

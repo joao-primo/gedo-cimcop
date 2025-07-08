@@ -5,6 +5,8 @@ from services.email_service import enviar_email_reset_senha
 import re
 import logging
 from datetime import datetime, timedelta
+from flask_limiter.util import get_remote_address
+from flask_limiter import Limiter
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -14,6 +16,8 @@ password_reset_bp = Blueprint('password_reset', __name__)
 
 # Rate limiting simples (em produção, use Redis)
 reset_attempts = {}
+
+limiter = Limiter()
 
 
 def validar_email(email):
@@ -67,6 +71,7 @@ def verificar_rate_limit(ip_address, max_attempts=5, window_minutes=15):
 
 
 @password_reset_bp.route('/forgot-password', methods=['POST'])
+@limiter.limit("3 per minute;10 per hour")
 def forgot_password():
     """Solicita reset de senha com rate limiting e auditoria"""
     try:
