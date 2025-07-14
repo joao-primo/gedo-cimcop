@@ -285,7 +285,7 @@ def finalizar_importacao(current_user):
         for registro_data in registros_data:
             try:
                 # Verificar se tem anexo
-                if not registro_data.get('anexo_path'):
+                if not (registro_data.get('anexo_path') or registro_data.get('blob_url')):
                     erros.append({
                         'id_temp': registro_data.get('id_temp'),
                         'erro': 'Anexo é obrigatório'
@@ -303,17 +303,16 @@ def finalizar_importacao(current_user):
                         registro_data['data_registro'], '%Y-%m-%d'),
                     codigo_numero=registro_data.get('codigo_numero'),
                     tipo_registro_id=registro_data['tipo_registro_id'],
-                    caminho_anexo=registro_data['anexo_path'],
-                    nome_arquivo_original=registro_data.get(
-                        'nome_arquivo_original'),
+                    caminho_anexo=registro_data.get('anexo_path'),
+                    blob_url=registro_data.get('blob_url'),
+                    blob_pathname=registro_data.get('blob_pathname'),
+                    nome_arquivo_original=registro_data.get('nome_arquivo_original'),
                     formato_arquivo=registro_data.get('formato_arquivo'),
                     tamanho_arquivo=registro_data.get('tamanho_arquivo'),
                     # Campos de classificação
                     classificacao_id=registro_data.get('classificacao_id'),
-                    classificacao_grupo=registro_data.get(
-                        'classificacao_grupo'),
-                    classificacao_subgrupo=registro_data.get(
-                        'classificacao_subgrupo')
+                    classificacao_grupo=registro_data.get('classificacao_grupo'),
+                    classificacao_subgrupo=registro_data.get('classificacao_subgrupo')
                 )
 
                 db.session.add(registro)
@@ -360,7 +359,7 @@ def finalizar_importacao(current_user):
 @importacao_bp.route('/upload-anexo', methods=['POST'])
 @token_required
 def upload_anexo_temp(current_user):
-    """Upload temporário de anexo durante importação"""
+    """Upload temporário de anexo durante importação (agora usando Vercel Blob)"""
     try:
         if 'arquivo' not in request.files:
             return jsonify({'message': 'Nenhum arquivo enviado'}), 400
@@ -375,24 +374,26 @@ def upload_anexo_temp(current_user):
         if not ('.' in file.filename and file.filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS):
             return jsonify({'message': 'Formato de arquivo não permitido'}), 400
 
-        # Salvar arquivo temporário
-        upload_folder = 'uploads'
-        if not os.path.exists(upload_folder):
-            os.makedirs(upload_folder)
+        # Usar save_file (prioriza Blob, fallback local)
+        from routes.registros import save_file
+        file_data = save_file(file)
+        if not file_data:
+            return jsonify({'message': 'Erro ao salvar arquivo (Blob ou local)'}), 500
 
-        filename = secure_filename(file.filename)
-        unique_filename = f"temp_{uuid.uuid4()}_{filename}"
-        file_path = os.path.join(upload_folder, unique_filename)
-
-        file.save(file_path)
-
-        return jsonify({
+        # Compatibilidade: se for local, retorna anexo_path; se for Blob, retorna blob_url
+        response_data = {
             'message': 'Arquivo enviado com sucesso',
-            'anexo_path': file_path,
-            'nome_arquivo_original': filename,
-            'formato_arquivo': filename.rsplit('.', 1)[1].lower(),
-            'tamanho_arquivo': os.path.getsize(file_path)
-        }), 200
+            'nome_arquivo_original': file_data.get('nome_arquivo_original'),
+            'formato_arquivo': file_data.get('formato_arquivo'),
+            'tamanho_arquivo': file_data.get('tamanho_arquivo'),
+        }
+        if 'blob_url' in file_data:
+            response_data['blob_url'] = file_data['blob_url']
+            response_data['blob_pathname'] = file_data.get('blob_pathname')
+        if 'caminho_anexo' in file_data:
+            response_data['anexo_path'] = file_data['caminho_anexo']
+
+        return jsonify(response_data), 200
 
     except Exception as e:
         return jsonify({'message': f'Erro interno: {str(e)}'}), 500

@@ -108,6 +108,8 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
             ? {
                 ...reg,
                 anexo_path: response.data.anexo_path,
+                blob_url: response.data.blob_url,
+                blob_pathname: response.data.blob_pathname,
                 nome_arquivo_original: response.data.nome_arquivo_original,
                 formato_arquivo: response.data.formato_arquivo,
                 tamanho_arquivo: response.data.tamanho_arquivo,
