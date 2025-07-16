@@ -5,6 +5,9 @@ import os
 from flask_sqlalchemy import SQLAlchemy
 import bcrypt
 
+# NOVO: Importar serviço de criptografia
+from services.encryption_service import encryption_service
+
 db = SQLAlchemy()
 
 
@@ -13,7 +16,10 @@ class User(db.Model):
 
     id = db.Column(db.Integer, primary_key=True)
     username = db.Column(db.String(80), unique=True, nullable=False)
+
+    # MANTIDO: Campo email original para compatibilidade total
     email = db.Column(db.String(120), unique=True, nullable=False)
+
     password_hash = db.Column(db.String(256), nullable=False)
     role = db.Column(db.String(20), nullable=False, default='usuario_padrao')
     obra_id = db.Column(db.Integer, db.ForeignKey('obras.id'), nullable=True)
@@ -31,13 +37,49 @@ class User(db.Model):
 
     def __init__(self, username, email, password, role='usuario_padrao', obra_id=None, must_change_password=True):
         self.username = username
-        self.email = email
+        self.set_email(email)  # NOVO: Usar método que criptografa
         self.set_password(password)
         self.role = role
         self.obra_id = obra_id
         self.must_change_password = must_change_password
         self.ativo = True
         self.password_changed_by_admin = False
+
+    # NOVO: Métodos para criptografia transparente do email
+    def set_email(self, email_value):
+        """Define email com criptografia automática"""
+        if email_value:
+            self.email = encryption_service.encrypt(email_value)
+        else:
+            self.email = email_value
+
+    def get_email(self):
+        """Obtém email descriptografado"""
+        return encryption_service.decrypt(self.email) if self.email else None
+
+    # NOVO: Método para buscar por email (compatível com criptografia)
+    @classmethod
+    def find_by_email(cls, email_to_find):
+        """
+        Busca usuário por email (compatível com dados criptografados e não criptografados)
+        """
+        try:
+            # Primeiro, tentar busca direta (dados não criptografados)
+            user = cls.query.filter_by(email=email_to_find).first()
+            if user and user.get_email() == email_to_find:
+                return user
+
+            # Se não encontrou, buscar em todos os usuários (dados criptografados)
+            users = cls.query.all()
+            for user in users:
+                if user.get_email() == email_to_find:
+                    return user
+
+            return None
+        except Exception as e:
+            import logging
+            logging.getLogger(__name__).error(f"Erro na busca por email: {e}")
+            return None
 
     def check_password(self, password):
         if not self.password_hash:
@@ -46,13 +88,15 @@ class User(db.Model):
             return bcrypt.checkpw(password.encode('utf-8'), self.password_hash.encode('utf-8'))
         except Exception as e:
             import logging
-            logging.getLogger(__name__).error(f"Erro ao verificar senha (possível hash antigo ou corrompido): {e}")
+            logging.getLogger(__name__).error(
+                f"Erro ao verificar senha (possível hash antigo ou corrompido): {e}")
             return False
 
     def set_password(self, new_password, changed_by_admin=False):
         """Define nova senha com controles de segurança usando bcrypt"""
         salt = bcrypt.gensalt()
-        self.password_hash = bcrypt.hashpw(new_password.encode('utf-8'), salt).decode('utf-8')
+        self.password_hash = bcrypt.hashpw(
+            new_password.encode('utf-8'), salt).decode('utf-8')
         self.password_changed_at = datetime.utcnow()
 
         if changed_by_admin:
@@ -111,7 +155,7 @@ class User(db.Model):
         payload = {
             'user_id': self.id,
             'username': self.username,
-            'email': self.email,
+            'email': self.get_email(),  # ATUALIZADO: Usar método que descriptografa
             'role': self.role,
             'obra_id': self.obra_id,
             'must_change_password': self.must_change_password,
@@ -142,7 +186,7 @@ class User(db.Model):
         return {
             'id': self.id,
             'username': self.username,
-            'email': self.email,
+            'email': self.get_email(),  # ATUALIZADO: Usar método que descriptografa
             'role': self.role,
             'obra_id': self.obra_id,
             'must_change_password': self.must_change_password,

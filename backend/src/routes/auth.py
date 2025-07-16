@@ -161,8 +161,8 @@ def login():
         logger.info(
             f"Tentativa de login para usuário: {email[:3]}***@{email.split('@')[1] if '@' in email else 'unknown'}")
 
-        # Buscar usuário
-        user = User.query.filter_by(email=email).first()
+        # ATUALIZADO: Buscar usuário usando método compatível com criptografia
+        user = User.find_by_email(email)
 
         if not user:
             # LOG SEGURO - sem revelar se usuário existe
@@ -277,7 +277,7 @@ def change_password(current_user):
             'forced_change': current_user.password_changed_by_admin
         })
 
-        logger.info(f"Senha alterada pelo usuário: {current_user.email}")
+        logger.info(f"Senha alterada pelo usuário: {current_user.get_email()}")
 
         return jsonify({
             'message': 'Senha alterada com sucesso',
@@ -314,7 +314,7 @@ def admin_change_user_password(current_user):
         if target_user.role == 'administrador' and target_user.id != current_user.id:
             audit_log('PASSWORD_CHANGE_BLOCKED', current_user.id, {
                 'reason': 'admin_to_admin_blocked',
-                'target_user': target_user.email
+                'target_user': target_user.get_email()
             })
             return jsonify({'message': 'Administradores não podem alterar senhas de outros administradores'}), 403
 
@@ -324,12 +324,12 @@ def admin_change_user_password(current_user):
 
         audit_log('PASSWORD_CHANGED_BY_ADMIN', current_user.id, {
             'target_user_id': target_user.id,
-            'target_user_email': target_user.email,
+            'target_user_email': target_user.get_email(),
             'target_user_role': target_user.role
         })
 
         logger.info(
-            f"Senha do usuário {target_user.email} alterada pelo admin {current_user.email}")
+            f"Senha do usuário {target_user.get_email()} alterada pelo admin {current_user.get_email()}")
 
         return jsonify({
             'message': f'Senha do usuário {target_user.username} alterada com sucesso. O usuário deverá criar uma nova senha no próximo login.',
@@ -368,8 +368,8 @@ def register(current_user):
         password = validar_senha(data['password'])
         role = validar_role(data.get('role', 'usuario_padrao'))
 
-        # Verificar se o usuário já existe
-        if User.query.filter_by(email=email).first():
+        # ATUALIZADO: Verificar se o usuário já existe usando método compatível com criptografia
+        if User.find_by_email(email):
             return jsonify({'message': 'Email já está em uso'}), 400
 
         if User.query.filter_by(username=username).first():
@@ -397,9 +397,10 @@ def register(current_user):
         db.session.add(user)
         db.session.commit()
 
-        logger.info(f"Usuário criado: {user.email} por {current_user.email}")
+        logger.info(
+            f"Usuário criado: {user.get_email()} por {current_user.get_email()}")
         audit_log('USER_CREATED', current_user.id,
-                  {'new_user_email': user.email})
+                  {'new_user_email': user.get_email()})
 
         return jsonify({
             'message': 'Usuário criado com sucesso',
@@ -459,11 +460,11 @@ def update_user(current_user, user_id):
 
         if 'email' in data:
             email = validar_email(data['email'])
-            # Verificar se o email já está em uso por outro usuário
-            existing_user = User.query.filter_by(email=email).first()
+            # ATUALIZADO: Verificar se o email já está em uso usando método compatível com criptografia
+            existing_user = User.find_by_email(email)
             if existing_user and existing_user.id != user_id:
                 return jsonify({'message': 'Email já está em uso'}), 400
-            user.email = email
+            user.set_email(email)  # ATUALIZADO: Usar método que criptografa
 
         if 'role' in data:
             role = validar_role(data['role'])
@@ -483,9 +484,9 @@ def update_user(current_user, user_id):
         db.session.commit()
 
         logger.info(
-            f"Usuário {user.email} atualizado por {current_user.email}")
+            f"Usuário {user.get_email()} atualizado por {current_user.get_email()}")
         audit_log('USER_UPDATED', current_user.id, {
-                  'updated_user_email': user.email})
+                  'updated_user_email': user.get_email()})
 
         return jsonify({
             'message': 'Usuário atualizado com sucesso',
@@ -513,12 +514,12 @@ def delete_user(current_user, user_id):
         if user.id == current_user.id:
             return jsonify({'message': 'Não é possível deletar seu próprio usuário'}), 400
 
-        email_deletado = user.email
+        email_deletado = user.get_email()
         db.session.delete(user)
         db.session.commit()
 
         logger.info(
-            f"Usuário {email_deletado} deletado por {current_user.email}")
+            f"Usuário {email_deletado} deletado por {current_user.get_email()}")
         audit_log('USER_DELETED', current_user.id, {
                   'deleted_user_email': email_deletado})
 

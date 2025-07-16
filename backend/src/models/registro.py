@@ -3,6 +3,9 @@ from models.user import db
 from models.obra import Obra
 from models.tipo_registro import TipoRegistro
 
+# NOVO: Importar serviço de criptografia
+from services.encryption_service import encryption_service
+
 
 class Registro(db.Model):
     __tablename__ = 'registros'
@@ -13,6 +16,8 @@ class Registro(db.Model):
     data_registro = db.Column(
         db.DateTime, nullable=False, default=datetime.utcnow)
     codigo_numero = db.Column(db.String(50), nullable=True)
+
+    # MANTIDO: Campo descrição original para compatibilidade total
     descricao = db.Column(db.Text, nullable=False)
 
     # NOVO: Campos de classificação
@@ -27,7 +32,10 @@ class Registro(db.Model):
     blob_url = db.Column(db.String(500), nullable=True)  # URL do Vercel Blob
     # Pathname para deletar
     blob_pathname = db.Column(db.String(500), nullable=True)
+
+    # MANTIDO: Nome do arquivo original para compatibilidade total
     nome_arquivo_original = db.Column(db.String(200), nullable=True)
+
     formato_arquivo = db.Column(db.String(20), nullable=True)
     tamanho_arquivo = db.Column(db.Integer, nullable=True)
 
@@ -53,7 +61,7 @@ class Registro(db.Model):
                  classificacao_grupo=None, classificacao_subgrupo=None, classificacao_id=None):
         self.titulo = titulo
         self.tipo_registro = tipo_registro
-        self.descricao = descricao
+        self.set_descricao(descricao)  # NOVO: Usar método que criptografa
         self.autor_id = autor_id
         self.obra_id = obra_id
         self.data_registro = data_registro or datetime.utcnow()
@@ -61,7 +69,8 @@ class Registro(db.Model):
         self.caminho_anexo = caminho_anexo
         self.blob_url = blob_url
         self.blob_pathname = blob_pathname
-        self.nome_arquivo_original = nome_arquivo_original
+        # NOVO: Usar método que criptografa
+        self.set_nome_arquivo_original(nome_arquivo_original)
         self.formato_arquivo = formato_arquivo
         self.tamanho_arquivo = tamanho_arquivo
         self.tipo_registro_id = tipo_registro_id
@@ -69,11 +78,35 @@ class Registro(db.Model):
         self.classificacao_subgrupo = classificacao_subgrupo
         self.classificacao_id = classificacao_id
 
+    # NOVO: Métodos para criptografia transparente da descrição
+    def set_descricao(self, descricao_value):
+        """Define descrição com criptografia automática"""
+        if descricao_value:
+            self.descricao = encryption_service.encrypt(descricao_value)
+        else:
+            self.descricao = descricao_value
+
+    def get_descricao(self):
+        """Obtém descrição descriptografada"""
+        return encryption_service.decrypt(self.descricao) if self.descricao else None
+
+    # NOVO: Métodos para criptografia transparente do nome do arquivo
+    def set_nome_arquivo_original(self, nome_value):
+        """Define nome do arquivo com criptografia automática"""
+        if nome_value:
+            self.nome_arquivo_original = encryption_service.encrypt(nome_value)
+        else:
+            self.nome_arquivo_original = nome_value
+
+    def get_nome_arquivo_original(self):
+        """Obtém nome do arquivo descriptografado"""
+        return encryption_service.decrypt(self.nome_arquivo_original) if self.nome_arquivo_original else None
+
     def to_dict(self):
         return {
             'id': self.id,
             'titulo': self.titulo,
-            'descricao': self.descricao,
+            'descricao': self.get_descricao(),  # ATUALIZADO: Usar método que descriptografa
             'tipo_registro': self.tipo_registro,
             'tipo_registro_nome': self.tipo_registro_rel.nome if self.tipo_registro_rel else None,
             'classificacao_grupo': self.classificacao_grupo,
@@ -85,7 +118,8 @@ class Registro(db.Model):
             'obra_codigo': self.obra.codigo if self.obra else None,
             # CORREÇÃO CRÍTICA: SEMPRE usar URL do backend, nunca Blob diretamente
             'anexo_url': f"/api/registros/{self.id}/download" if (self.blob_url or self.caminho_anexo) else None,
-            'nome_arquivo_original': self.nome_arquivo_original,
+            # ATUALIZADO: Usar método que descriptografa
+            'nome_arquivo_original': self.get_nome_arquivo_original(),
             'formato_arquivo': self.formato_arquivo,
             'tamanho_arquivo': self.tamanho_arquivo,
             'tem_anexo': bool(self.blob_url or self.caminho_anexo),
