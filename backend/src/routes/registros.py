@@ -16,6 +16,9 @@ from flask_limiter.util import get_remote_address
 from flask_limiter import Limiter
 import bleach
 import logging
+import hashlib
+from PIL import Image
+import PyPDF2
 from extensions import limiter
 
 registros_bp = Blueprint('registros', __name__)
@@ -35,11 +38,182 @@ MAX_FILE_SIZE = 16 * 1024 * 1024  # 16MB
 
 logger = logging.getLogger("gedo.registros")
 
+def validate_file_magic_bytes(file):
+    """Valida arquivo usando magic bytes"""
+    try:
+        file.seek(0)
+        header = file.read(1024)
+        file.seek(0)
+        
+        # Detectar tipo real do arquivo
+        file_type = magic.from_buffer(header, mime=True)
+        
+        # Mapeamento de tipos permitidos
+        allowed_magic_types = {
+            'application/pdf': ['pdf'],
+            'image/jpeg': ['jpg', 'jpeg'],
+            'image/png': ['png'],
+            'image/gif': ['gif'],
+            'text/plain': ['txt'],
+            'application/msword': ['doc'],
+            'application/vnd.openxmlformats-officedocument.wordprocessingml.document': ['docx'],
+            'application/vnd.ms-excel': ['xls'],
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': ['xlsx']
+        }
+        
+        return file_type, file_type in allowed_magic_types
+    except Exception as e:
+        logger.error(f"Erro na validação magic bytes: {str(e)}")
+        return None, False
+
+def validate_file_content(file, file_type):
+    """Valida conteúdo específico do arquivo"""
+    try:
+        file.seek(0)
+        
+        if file_type == 'application/pdf':
+            # Validar PDF
+            try:
+                pdf_reader = PyPDF2.PdfReader(file)
+                # Verificar se tem pelo menos uma página
+                if len(pdf_reader.pages) == 0:
+                    return False
+                # Verificar se não está corrompido
+                for page in pdf_reader.pages[:3]:  # Verificar primeiras 3 páginas
+                    page.extract_text()
+                return True
+            except Exception:
+                return False
+                
+        elif file_type.startswith('image/'):
+            # Validar imagem
+            try:
+                with Image.open(file) as img:
+                    img.verify()  # Verificar integridade
+                    # Verificar dimensões razoáveis
+                    if img.size[0] > 10000 or img.size[1] > 10000:
+                        return False
+                return True
+            except Exception:
+                return False
+                
+        elif file_type == 'text/plain':
+            # Validar texto
+            try:
+                content = file.read().decode('utf-8')
+                # Verificar se não contém caracteres suspeitos
+                suspicious_patterns = ['<script', '<?php', '<%', 'javascript:', 'vbscript:']
+                content_lower = content.lower()
+                for pattern in suspicious_patterns:
+                    if pattern in content_lower:
+                        return False
+                return True
+            except Exception:
+                return False
+        
+        # Para outros tipos, validação básica
+        return True
+        
+    except Exception as e:
+        logger.error(f"Erro na validação de conteúdo: {str(e)}")
+        return False
+    finally:
+        file.seek(0)
+
+def calculate_file_hash(file):
+    """Calcula hash SHA-256 do arquivo"""
+    try:
+        file.seek(0)
+        hash_sha256 = hashlib.sha256()
+        for chunk in iter(lambda: file.read(4096), b""):
+            hash_sha256.update(chunk)
+        file.seek(0)
+        return hash_sha256.hexdigest()
+    except Exception as e:
+        logger.error(f"Erro no cálculo de hash: {str(e)}")
+        return None
+
+def secure_filename_advanced(filename):
+    """Sanitização avançada de nome de arquivo"""
+    if not filename:
+        return "arquivo_sem_nome"
+    
+    # Remover path traversal
+    filename = os.path.basename(filename)
+    
+    # Remover caracteres perigosos
+    import re
+    filename = re.sub(r'[^\w\s.-]', '', filename)
+    filename = re.sub(r'[-\s]+', '_', filename)
+    
+    # Limitar tamanho
+    if len(filename) > 100:
+        name, ext = os.path.splitext(filename)
+        filename = name[:95] + ext
+    
+    # Garantir que não seja vazio
+    if not filename or filename in ['.', '..']:
+        filename = f"arquivo_{uuid.uuid4().hex[:8]}"
+    
+    return filename.strip('._-')
+
 def allowed_file(filename, mimetype=None):
+    """Validação básica mantida para compatibilidade"""
+    if not filename:
+        return False
+    
+    # Validação por extensão (mantida)
     ext_ok = '.' in filename and filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+    
     if mimetype:
-        return ext_ok and mimetype in ALLOWED_MIMETYPES
+        mime_ok = mimetype in ALLOWED_MIMETYPES
+        return ext_ok and mime_ok
+    
     return ext_ok
+
+def validate_file_security(file):
+    """Validação de segurança completa do arquivo"""
+    if not file or not file.filename:
+        raise ValueError('Arquivo não fornecido')
+    
+    # 1. Validação básica
+    if not allowed_file(file.filename, file.mimetype):
+        raise ValueError('Tipo de arquivo não permitido')
+    
+    # 2. Verificar tamanho
+    file.seek(0, 2)
+    size = file.tell()
+    file.seek(0)
+    
+    if size > MAX_FILE_SIZE:
+        raise ValueError(f'Arquivo muito grande (máximo {MAX_FILE_SIZE/1024/1024:.1f}MB)')
+    
+    if size == 0:
+        raise ValueError('Arquivo vazio')
+    
+    # 3. Validação por magic bytes
+    detected_type, is_valid_type = validate_file_magic_bytes(file)
+    if not is_valid_type:
+        raise ValueError(f'Tipo de arquivo não permitido: {detected_type}')
+    
+    # 4. Validação de conteúdo
+    if not validate_file_content(file, detected_type):
+        raise ValueError('Conteúdo do arquivo inválido ou corrompido')
+    
+    # 5. Calcular hash para integridade
+    file_hash = calculate_file_hash(file)
+    
+    # 6. Sanitizar nome do arquivo
+    safe_filename = secure_filename_advanced(file.filename)
+    
+    return {
+        'is_valid': True,
+        'detected_type': detected_type,
+        'file_hash': file_hash,
+        'safe_filename': safe_filename,
+        'original_filename': file.filename,
+        'file_size': size
+    }
 
 
 def ensure_upload_folder():
@@ -96,22 +270,48 @@ def save_file_blob(file):
 
 
 def save_file(file):
-    """Função principal: tenta Blob primeiro, fallback para local"""
-    if not file or not allowed_file(file.filename, file.mimetype):
+    """Função principal: validação segura + salvamento"""
+    if not file or not file.filename or file.filename.strip() == '':
         return None
-    file.seek(0, 2)
-    size = file.tell()
-    file.seek(0)
-    if size > MAX_FILE_SIZE:
-        raise ValueError('Arquivo muito grande (máximo 16MB)')
-    # Tentar Vercel Blob primeiro
-    blob_result = save_file_blob(file)
-    if blob_result:
-        logger.info(f"✅ Arquivo salvo no Vercel Blob: {blob_result['blob_url']}")
-        return blob_result
-    # Fallback para sistema local
-    logger.warning("⚠️ Fallback para sistema local")
-    return save_file_legacy(file)
+    
+    try:
+        # Validação de segurança completa
+        validation_result = validate_file_security(file)
+        
+        logger.info(f"✅ Arquivo validado com segurança: {validation_result['safe_filename']}")
+        logger.info(f"   - Tipo detectado: {validation_result['detected_type']}")
+        logger.info(f"   - Hash: {validation_result['file_hash'][:16]}...")
+        logger.info(f"   - Tamanho: {validation_result['file_size']} bytes")
+        
+        # Tentar Vercel Blob primeiro
+        blob_result = save_file_blob(file)
+        if blob_result:
+            # Adicionar informações de segurança
+            blob_result.update({
+                'file_hash': validation_result['file_hash'],
+                'detected_type': validation_result['detected_type'],
+                'nome_arquivo_original': validation_result['safe_filename']  # Usar nome sanitizado
+            })
+            logger.info(f"✅ Arquivo salvo no Vercel Blob com segurança")
+            return blob_result
+        
+        # Fallback para sistema local
+        logger.warning("⚠️ Fallback para sistema local")
+        local_result = save_file_legacy(file)
+        if local_result:
+            local_result.update({
+                'file_hash': validation_result['file_hash'],
+                'detected_type': validation_result['detected_type'],
+                'nome_arquivo_original': validation_result['safe_filename']
+            })
+        return local_result
+        
+    except ValueError as e:
+        logger.error(f"❌ Validação de arquivo falhou: {str(e)}")
+        raise ValueError(f"Arquivo rejeitado: {str(e)}")
+    except Exception as e:
+        logger.error(f"❌ Erro no processamento do arquivo: {str(e)}")
+        raise ValueError("Erro interno no processamento do arquivo")
 
 
 def validate_registro_data(data, files):

@@ -3,7 +3,7 @@ from werkzeug.security import check_password_hash
 from models.user import User, db
 from models.obra import Obra
 from utils.validators import ValidationError, validar_email, validar_senha, validar_username, validar_role, validar_json_data
-from utils.security import audit_log, security_manager, generate_csrf_token
+from utils.security import audit_log, security_manager, generate_csrf_token, security_check_decorator
 from functools import wraps
 import jwt
 import os
@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 from flask_limiter.util import get_remote_address
 from extensions import limiter
 from flask_wtf.csrf import generate_csrf
+import hashlib
+import uuid
 
 # Configurar logging
 logging.basicConfig(level=logging.INFO)
@@ -93,8 +95,58 @@ def handle_validation_error(f):
     return decorated_function
 
 
+def sanitize_log_data(data):
+    """Sanitiza dados sensíveis para logs"""
+    if isinstance(data, dict):
+        sanitized = {}
+        sensitive_keys = ['password', 'senha',
+                          'token', 'secret', 'key', 'auth']
+
+        for key, value in data.items():
+            key_lower = key.lower()
+            if any(sensitive in key_lower for sensitive in sensitive_keys):
+                sanitized[key] = '[REDACTED]'
+            elif key_lower == 'email' and isinstance(value, str) and '@' in value:
+                # Mascarar email
+                parts = value.split('@')
+                sanitized[key] = f"{parts[0][:2]}***@{parts[1]}"
+            else:
+                sanitized[key] = sanitize_log_data(value)
+        return sanitized
+    elif isinstance(data, list):
+        return [sanitize_log_data(item) for item in data]
+    elif isinstance(data, str) and len(data) > 50:
+        # Truncar strings muito longas
+        return data[:47] + '...'
+    else:
+        return data
+
+# Atualizar a função audit_log para usar sanitização
+
+
+def audit_log(action, user_id=None, details=None):
+    """Registra eventos de auditoria com sanitização"""
+    try:
+        log_entry = {
+            'timestamp': datetime.now().isoformat(),
+            'action': action,
+            'user_id': user_id,
+            'ip': request.remote_addr if request else 'unknown',
+            'user_agent_hash': hashlib.sha256(request.headers.get('User-Agent', '').encode()).hexdigest()[:16] if request else 'unknown',
+            'details': sanitize_log_data(details or {}),
+            'request_id': uuid.uuid4().hex[:8]
+        }
+
+        logger.info(f"AUDIT: {log_entry}")
+        return log_entry
+    except Exception as e:
+        logger.error(f"Erro ao registrar log de auditoria: {e}")
+        return None
+
+
 @auth_bp.route('/login', methods=['POST'])
-@limiter.limit("5 per minute;20 per hour")
+@security_check_decorator  # Adicionar esta linha
+@limiter.limit("3 per minute;10 per hour")
 @handle_validation_error
 def login():
     try:
@@ -105,38 +157,60 @@ def login():
         email = validar_email(data['email'])
         password = data['password']
 
-        logger.info(f"Tentativa de login para: {email}")
+        # LOG SEGURO - sem informações sensíveis
+        logger.info(
+            f"Tentativa de login para usuário: {email[:3]}***@{email.split('@')[1] if '@' in email else 'unknown'}")
 
         # Buscar usuário
         user = User.query.filter_by(email=email).first()
 
         if not user:
-            logger.warning(f"Usuário não encontrado: {email}")
+            # LOG SEGURO - sem revelar se usuário existe
+            logger.warning(
+                f"Tentativa de login com credenciais inválidas - IP: {request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)}")
             return jsonify({'message': 'Credenciais inválidas'}), 401
 
-        logger.info(f"Usuário encontrado: {user.email}")
+        # LOG SEGURO - sem resultado da verificação
+        logger.info(f"Usuário encontrado, verificando credenciais...")
 
         # Verificar senha
         password_check = user.check_password(password)
-        logger.info(f"Resultado da verificação de senha: {password_check}")
 
         if not password_check:
-            logger.warning(f"Senha incorreta para: {email}")
+            # Registrar tentativa falhada ANTES de retornar erro
+            security_manager.register_failed_attempt()
+
+            # LOG SEGURO - sem detalhes da senha
+            logger.warning(
+                f"Falha na autenticação para usuário {email[:3]}***@{email.split('@')[1]} - IP: {request.environ.get('HTTP_X_FORWARDED_FOR', request.remote_addr)}")
             ip_address = request.environ.get(
                 'HTTP_X_FORWARDED_FOR', request.remote_addr)
             audit_log('LOGIN_FAILED', user.id, {
-                      'email': email, 'ip': ip_address, 'reason': 'wrong_password'})
+                'email_hash': hashlib.sha256(email.encode()).hexdigest()[:16],
+                'ip': ip_address,
+                'reason': 'authentication_failed'
+            })
             return jsonify({'message': 'Credenciais inválidas'}), 401
 
         # Verificar se usuário está ativo
         if not user.ativo:
+            logger.warning(
+                f"Tentativa de login com conta desativada - User ID: {user.id}")
             return jsonify({'message': 'Conta desativada. Entre em contato com o administrador.'}), 401
 
         # Log do login bem-sucedido
         ip_address = request.environ.get(
             'HTTP_X_FORWARDED_FOR', request.remote_addr)
-        logger.info(f"Login bem-sucedido: {user.email} (IP: {ip_address})")
-        audit_log('LOGIN_SUCCESS', user.id, {'ip': ip_address})
+        logger.info(
+            f"Login bem-sucedido - User ID: {user.id}, Role: {user.role}, IP: {ip_address}")
+
+        # Limpar tentativas falhadas após login bem-sucedido
+        security_manager.clear_failed_attempts()
+
+        audit_log('LOGIN_SUCCESS', user.id, {
+            'ip': ip_address,
+            'user_agent_hash': hashlib.sha256(request.headers.get('User-Agent', '').encode()).hexdigest()[:16]
+        })
 
         # Atualizar último login
         user.ultimo_login = datetime.utcnow()
@@ -163,7 +237,8 @@ def login():
         logger.error(f"Erro de validação no login: {str(e)}")
         return jsonify({'message': str(e)}), 400
     except Exception as e:
-        logger.error(f"Erro no login: {str(e)}")
+        # LOG SEGURO - sem stack trace completo em produção
+        logger.error(f"Erro no login - Request ID: {uuid.uuid4().hex[:8]}")
         return jsonify({'message': 'Erro interno do servidor'}), 500
 
 
