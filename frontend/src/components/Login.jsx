@@ -1,290 +1,198 @@
 "use client"
 
-import { useState, useEffect } from "react"
-import { useNavigate, useSearchParams } from "react-router-dom"
-import { useAuth } from "../contexts/AuthContext"
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
+import { useState, useContext, useEffect } from "react"
+import { AuthContext } from "../contexts/AuthContext"
 import { Button } from "./ui/button"
 import { Input } from "./ui/input"
-import { Label } from "./ui/label"
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "./ui/card"
 import { Alert, AlertDescription } from "./ui/alert"
-import { Eye, EyeOff, AlertCircle, CheckCircle, Info, Wifi, WifiOff } from "lucide-react"
+import { Loader2, Eye, EyeOff, AlertCircle, CheckCircle } from "lucide-react"
 import { testConnection } from "../services/api"
 
-export default function Login() {
+const Login = () => {
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
   const [showPassword, setShowPassword] = useState(false)
-  const [error, setError] = useState("")
-  const [success, setSuccess] = useState("")
-  const [warning, setWarning] = useState("")
-  const [loading, setLoading] = useState(false)
-  const [connectionStatus, setConnectionStatus] = useState("unknown") // unknown, connected, disconnected
-  const [searchParams] = useSearchParams()
-  const navigate = useNavigate()
-  const { login } = useAuth()
+  const [connectionStatus, setConnectionStatus] = useState("checking") // checking, connected, error
+  const { login, loading, error } = useContext(AuthContext)
 
-  // ADICIONADO: Testar conectividade ao carregar o componente
+  // Testar conectividade ao carregar o componente
   useEffect(() => {
     const checkConnection = async () => {
       console.log("🔍 Verificando conectividade com o backend...")
-      const connected = await testConnection()
-      setConnectionStatus(connected ? "connected" : "disconnected")
-
-      if (!connected) {
-        setError("Não foi possível conectar ao servidor. Verifique sua conexão ou tente novamente.")
+      try {
+        const isConnected = await testConnection()
+        setConnectionStatus(isConnected ? "connected" : "error")
+      } catch (error) {
+        console.error("❌ Erro ao testar conectividade:", error)
+        setConnectionStatus("error")
       }
     }
 
     checkConnection()
   }, [])
 
-  useEffect(() => {
-    // Verificar mensagens da URL
-    const message = searchParams.get("message")
-    const type = searchParams.get("type")
-
-    if (message && type) {
-      if (type === "success") {
-        setSuccess(message)
-      } else if (type === "error") {
-        setError(message)
-      } else if (type === "warning") {
-        setWarning(message)
-      }
-
-      // Limpar URL após 3 segundos
-      setTimeout(() => {
-        setSuccess("")
-        setError("")
-        setWarning("")
-      }, 3000)
-    }
-  }, [searchParams])
-
   const handleSubmit = async (e) => {
     e.preventDefault()
-    setError("")
-    setSuccess("")
-    setWarning("")
 
-    if (!email || !password) {
-      setError("Por favor, preencha todos os campos")
-      return
-    }
+    // Verificar conectividade antes de tentar login
+    if (connectionStatus !== "connected") {
+      console.log("⚠️ Tentando reconectar antes do login...")
+      const isConnected = await testConnection()
+      setConnectionStatus(isConnected ? "connected" : "error")
 
-    // ADICIONADO: Verificar conectividade antes de tentar login
-    if (connectionStatus === "disconnected") {
-      setError("Sem conexão com o servidor. Verifique sua internet e tente novamente.")
-      return
-    }
-
-    setLoading(true)
-
-    try {
-      const result = await login(email, password)
-
-      if (result.success) {
-        setSuccess(result.message || "Login realizado com sucesso!")
-
-        if (result.warning) {
-          setWarning(result.warning)
-        }
-
-        // Redirecionar após um breve delay
-        setTimeout(() => {
-          navigate(result.redirectTo || "/dashboard")
-        }, 1000)
-      } else {
-        setError(result.message)
+      if (!isConnected) {
+        return // Não prosseguir se não conseguir conectar
       }
-    } catch (error) {
-      console.error("Erro no login:", error)
-
-      // ADICIONADO: Tratamento específico para Network Error
-      if (error.code === "ERR_NETWORK") {
-        setError("Erro de conexão com o servidor. Verifique sua internet e tente novamente.")
-        setConnectionStatus("disconnected")
-      } else {
-        setError(error.message || "Erro interno do servidor")
-      }
-    } finally {
-      setLoading(false)
     }
+
+    await login(email, password)
   }
 
-  // ADICIONADO: Função para tentar reconectar
-  const handleReconnect = async () => {
-    setConnectionStatus("unknown")
-    setError("")
-
-    const connected = await testConnection()
-    setConnectionStatus(connected ? "connected" : "disconnected")
-
-    if (connected) {
-      setSuccess("Conexão restabelecida!")
-      setTimeout(() => setSuccess(""), 3000)
-    } else {
-      setError("Ainda não foi possível conectar ao servidor.")
+  const getConnectionStatusDisplay = () => {
+    switch (connectionStatus) {
+      case "checking":
+        return (
+          <Alert className="mb-4 border-blue-200 bg-blue-50">
+            <Loader2 className="h-4 w-4 animate-spin text-blue-600" />
+            <AlertDescription className="text-blue-800">Verificando conectividade com o servidor...</AlertDescription>
+          </Alert>
+        )
+      case "connected":
+        return (
+          <Alert className="mb-4 border-green-200 bg-green-50">
+            <CheckCircle className="h-4 w-4 text-green-600" />
+            <AlertDescription className="text-green-800">Conectado ao servidor com sucesso</AlertDescription>
+          </Alert>
+        )
+      case "error":
+        return (
+          <Alert className="mb-4 border-red-200 bg-red-50">
+            <AlertCircle className="h-4 w-4 text-red-600" />
+            <AlertDescription className="text-red-800">
+              Não foi possível conectar ao servidor. Verifique sua conexão com a internet.
+            </AlertDescription>
+          </Alert>
+        )
+      default:
+        return null
     }
   }
 
   return (
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-indigo-100 p-4">
-      <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <h1 className="text-4xl font-bold text-gray-900 mb-2">GEDO CIMCOP</h1>
-          <p className="text-gray-600">Sistema de Gestão de Obras</p>
+      <Card className="w-full max-w-md shadow-xl">
+        <CardHeader className="space-y-1 text-center">
+          <CardTitle className="text-2xl font-bold text-gray-900">GEDO CIMCOP</CardTitle>
+          <CardDescription className="text-gray-600">
+            Sistema de Gerenciamento de Documentos e Registros de Obras
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          {/* Status de Conectividade */}
+          {getConnectionStatusDisplay()}
 
-          {/* ADICIONADO: Indicador de status de conexão */}
-          <div className="flex items-center justify-center mt-4 space-x-2">
-            {connectionStatus === "connected" && (
-              <>
-                <Wifi className="h-4 w-4 text-green-600" />
-                <span className="text-sm text-green-600">Conectado</span>
-              </>
-            )}
-            {connectionStatus === "disconnected" && (
-              <>
-                <WifiOff className="h-4 w-4 text-red-600" />
-                <span className="text-sm text-red-600">Desconectado</span>
-                <Button
-                  variant="link"
-                  size="sm"
-                  onClick={handleReconnect}
-                  className="text-xs text-blue-600 hover:text-blue-800"
-                >
-                  Tentar novamente
-                </Button>
-              </>
-            )}
-            {connectionStatus === "unknown" && (
-              <>
-                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
-                <span className="text-sm text-gray-600">Verificando...</span>
-              </>
-            )}
-          </div>
-        </div>
+          {/* Erro de Login */}
+          {error && (
+            <Alert className="border-red-200 bg-red-50">
+              <AlertCircle className="h-4 w-4 text-red-600" />
+              <AlertDescription className="text-red-800">{error}</AlertDescription>
+            </Alert>
+          )}
 
-        {/* Login Card */}
-        <Card className="shadow-xl border-0">
-          <CardHeader className="space-y-1">
-            <CardTitle className="text-2xl font-bold text-center">Fazer Login</CardTitle>
-            <CardDescription className="text-center">Entre com suas credenciais para acessar o sistema</CardDescription>
-          </CardHeader>
-          <CardContent>
-            {/* Mensagens de Feedback */}
-            {error && (
-              <Alert className="mb-4 border-red-200 bg-red-50">
-                <AlertCircle className="h-4 w-4 text-red-600" />
-                <AlertDescription className="text-red-800">{error}</AlertDescription>
-              </Alert>
-            )}
+          <form onSubmit={handleSubmit} className="space-y-4">
+            <div className="space-y-2">
+              <label htmlFor="email" className="text-sm font-medium text-gray-700">
+                Email
+              </label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="seu@email.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                required
+                className="w-full"
+                disabled={loading || connectionStatus === "checking"}
+              />
+            </div>
 
-            {success && (
-              <Alert className="mb-4 border-green-200 bg-green-50">
-                <CheckCircle className="h-4 w-4 text-green-600" />
-                <AlertDescription className="text-green-800">{success}</AlertDescription>
-              </Alert>
-            )}
-
-            {warning && (
-              <Alert className="mb-4 border-yellow-200 bg-yellow-50">
-                <Info className="h-4 w-4 text-yellow-600" />
-                <AlertDescription className="text-yellow-800">{warning}</AlertDescription>
-              </Alert>
-            )}
-
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-2">
-                <Label htmlFor="email">Email</Label>
+            <div className="space-y-2">
+              <label htmlFor="password" className="text-sm font-medium text-gray-700">
+                Senha
+              </label>
+              <div className="relative">
                 <Input
-                  id="email"
-                  type="email"
-                  placeholder="seu.email@exemplo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading || connectionStatus === "disconnected"}
-                  className="h-11"
+                  id="password"
+                  type={showPassword ? "text" : "password"}
+                  placeholder="Sua senha"
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  required
+                  className="w-full pr-10"
+                  disabled={loading || connectionStatus === "checking"}
                 />
-              </div>
-
-              <div className="space-y-2">
-                <Label htmlFor="password">Senha</Label>
-                <div className="relative">
-                  <Input
-                    id="password"
-                    type={showPassword ? "text" : "password"}
-                    placeholder="Digite sua senha"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading || connectionStatus === "disconnected"}
-                    className="h-11 pr-10"
-                  />
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
-                    onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading || connectionStatus === "disconnected"}
-                  >
-                    {showPassword ? (
-                      <EyeOff className="h-4 w-4 text-gray-400" />
-                    ) : (
-                      <Eye className="h-4 w-4 text-gray-400" />
-                    )}
-                  </Button>
-                </div>
-              </div>
-
-              <div className="flex items-center justify-between">
-                <Button
+                <button
                   type="button"
-                  variant="link"
-                  className="px-0 font-normal text-sm text-blue-600 hover:text-blue-800"
-                  onClick={() => navigate("/esqueci-senha")}
-                  disabled={connectionStatus === "disconnected"}
+                  className="absolute inset-y-0 right-0 pr-3 flex items-center"
+                  onClick={() => setShowPassword(!showPassword)}
+                  disabled={loading || connectionStatus === "checking"}
                 >
-                  Esqueceu sua senha?
-                </Button>
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4 text-gray-400" />
+                  ) : (
+                    <Eye className="h-4 w-4 text-gray-400" />
+                  )}
+                </button>
               </div>
+            </div>
 
-              <Button
-                type="submit"
-                className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white"
-                disabled={loading || connectionStatus === "disconnected"}
-              >
-                {loading ? (
-                  <div className="flex items-center">
-                    <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
-                    Entrando...
-                  </div>
-                ) : connectionStatus === "disconnected" ? (
-                  "Sem conexão"
-                ) : (
-                  "Entrar"
-                )}
-              </Button>
-            </form>
-          </CardContent>
-        </Card>
+            <Button
+              type="submit"
+              className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+              disabled={loading || connectionStatus !== "connected"}
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Entrando...
+                </>
+              ) : (
+                "Entrar"
+              )}
+            </Button>
+          </form>
 
-        {/* Footer */}
-        <div className="text-center mt-8 text-sm text-gray-500">
-          <p>Sistema de Gestão de Obras</p>
-          <p>Versão 1.0</p>
-          {/* ADICIONADO: Informações de debug em desenvolvimento */}
+          <div className="text-center">
+            <button
+              type="button"
+              className="text-sm text-blue-600 hover:text-blue-800 underline"
+              onClick={() => {
+                // Implementar esqueci minha senha
+                alert("Funcionalidade em desenvolvimento")
+              }}
+            >
+              Esqueci minha senha
+            </button>
+          </div>
+
+          {/* Informações de Debug em Desenvolvimento */}
           {import.meta.env.DEV && (
-            <div className="mt-2 text-xs">
+            <div className="mt-4 p-3 bg-gray-100 rounded-md text-xs text-gray-600">
+              <p>
+                <strong>Debug Info:</strong>
+              </p>
               <p>API URL: {import.meta.env.VITE_API_URL}</p>
               <p>Status: {connectionStatus}</p>
+              <p>Credenciais padrão:</p>
+              <p>Email: admin@gedo.com</p>
+              <p>Senha: admin123</p>
             </div>
           )}
-        </div>
-      </div>
+        </CardContent>
+      </Card>
     </div>
   )
 }
+
+export default Login
