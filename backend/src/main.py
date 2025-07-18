@@ -54,42 +54,41 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
-    # CORS mais permissivo
+    # CORREÇÃO: CORS mais específico e seguro
+    config_instance = config[config_name]()
+
     if config_name == 'production':
-        # URLs permitidas em produção
-        allowed_origins = [
-            'https://gedo-cimcop.vercel.app',
-            'https://gedo-cimcop-frontend.vercel.app',
-            'https://*.vercel.app',
-        ]
-
-        # Adicionar URL do ambiente se existir
-        if app.config.get('FRONTEND_URL'):
-            allowed_origins.append(app.config['FRONTEND_URL'])
-
-        # Adicionar URLs adicionais se existirem
-        if os.getenv('ADDITIONAL_ORIGINS'):
-            allowed_origins.extend(os.getenv('ADDITIONAL_ORIGINS').split(','))
-
+        allowed_origins = config_instance.CORS_ORIGINS
         logger.info(f"🌐 CORS configurado para produção: {allowed_origins}")
 
         CORS(app,
              origins=allowed_origins,
              supports_credentials=True,
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             allow_headers=["Content-Type",
-                            "Authorization", "X-Requested-With", "X-CSRFToken"],
-             expose_headers=["Content-Range", "X-Content-Range"])
+             allow_headers=[
+                 "Content-Type",
+                 "Authorization",
+                 "X-Requested-With",
+                 "X-CSRFToken",
+                 "Accept"
+             ],
+             expose_headers=["Content-Range", "X-Content-Range"],
+             max_age=86400)
     else:
-        # Desenvolvimento - mais permissivo
+        # Desenvolvimento
         logger.info("🌐 CORS configurado para desenvolvimento")
         CORS(app,
              origins=["http://localhost:5173",
                       "http://127.0.0.1:5173", "http://localhost:3000"],
              supports_credentials=True,
              methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-             allow_headers=["Content-Type",
-                            "Authorization", "X-Requested-With", "X-CSRFToken"],
+             allow_headers=[
+                 "Content-Type",
+                 "Authorization",
+                 "X-Requested-With",
+                 "X-CSRFToken",
+                 "Accept"
+             ],
              expose_headers=["Content-Range", "X-Content-Range"])
 
     # Inicializar extensões
@@ -110,144 +109,113 @@ def create_app(config_name=None):
     app.register_blueprint(workflow_bp, url_prefix='/api/workflow')
     app.register_blueprint(classificacoes_bp, url_prefix='/api/classificacoes')
 
-    # Middleware CORS manual para casos especiais
+    # CORREÇÃO: Função auxiliar para verificar origem
+    def is_allowed_origin(origin, config_name):
+        if not origin:
+            return False
+
+        if config_name == 'production':
+            allowed_origins = config_instance.CORS_ORIGINS
+            return origin in allowed_origins or origin.endswith('.vercel.app')
+        else:
+            return origin.startswith('http://localhost') or origin.startswith('http://127.0.0.1')
+
+    # Middleware CORS robusto
     @app.before_request
     def handle_preflight():
         if request.method == "OPTIONS":
             response = app.make_default_options_response()
             headers = response.headers
 
-            # Headers CORS manuais
             origin = request.headers.get('Origin')
-            if origin:
-                if config_name == 'production':
-                    allowed_origins = [
-                        'https://gedo-cimcop.vercel.app',
-                        'https://gedo-cimcop-frontend.vercel.app'
-                    ]
-                    if origin in allowed_origins or origin.endswith('.vercel.app'):
-                        headers['Access-Control-Allow-Origin'] = origin
-                else:
-                    headers['Access-Control-Allow-Origin'] = origin
-
-            headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
-            headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,X-CSRFToken'
-            headers['Access-Control-Allow-Credentials'] = 'true'
-            headers['Access-Control-Max-Age'] = '86400'
+            if origin and is_allowed_origin(origin, config_name):
+                headers['Access-Control-Allow-Origin'] = origin
+                headers['Access-Control-Allow-Credentials'] = 'true'
+                headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
+                headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,X-CSRFToken,Accept'
+                headers['Access-Control-Max-Age'] = '86400'
 
             return response
 
     @app.after_request
     def security_headers(response):
         """Adiciona headers de segurança e CORS"""
-        # Headers CORS para todas as respostas
         try:
             origin = request.headers.get('Origin')
-            if origin:
-                if config_name == 'production':
-                    allowed_origins = [
-                        'https://gedo-cimcop.vercel.app',
-                        'https://gedo-cimcop-frontend.vercel.app'
-                    ]
-                    if origin in allowed_origins or origin.endswith('.vercel.app'):
-                        response.headers['Access-Control-Allow-Origin'] = origin
-                        response.headers['Access-Control-Allow-Credentials'] = 'true'
-                else:
-                    response.headers['Access-Control-Allow-Origin'] = origin
-                    response.headers['Access-Control-Allow-Credentials'] = 'true'
-                
-                # Headers CORS adicionais
+            if origin and is_allowed_origin(origin, config_name):
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
                 response.headers['Access-Control-Allow-Methods'] = 'GET,POST,PUT,DELETE,OPTIONS'
-                response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,X-CSRFToken'
+                response.headers['Access-Control-Allow-Headers'] = 'Content-Type,Authorization,X-Requested-With,X-CSRFToken,Accept'
         except Exception as e:
-            # Se houver erro, apenas log e continue
             logger.debug(f"Erro ao processar headers CORS: {e}")
 
-        # Headers de segurança apenas em produção
-        if config_name == 'production':
-            response.headers['X-Content-Type-Options'] = 'nosniff'
-            response.headers['X-Frame-Options'] = 'DENY'
-            response.headers['X-XSS-Protection'] = '1; mode=block'
+        # Headers de segurança
+        for header, value in app.config.get('SECURITY_HEADERS', {}).items():
+            response.headers[header] = value
 
         return response
 
-    # Handlers de erro
+    # Função auxiliar para aplicar CORS em erros
+    def apply_cors_headers(response):
+        try:
+            origin = request.headers.get('Origin')
+            if origin and is_allowed_origin(origin, config_name):
+                response.headers['Access-Control-Allow-Origin'] = origin
+                response.headers['Access-Control-Allow-Credentials'] = 'true'
+        except Exception as e:
+            logger.debug(f"Erro ao aplicar CORS em erro: {e}")
+        return response
+
+    # Handlers de erro com CORS
     @app.errorhandler(404)
     def not_found(error):
-        return {'message': 'Recurso não encontrado'}, 404
+        response = jsonify({'message': 'Recurso não encontrado'})
+        response.status_code = 404
+        return apply_cors_headers(response)
 
     @app.errorhandler(500)
     def internal_error(error):
         db.session.rollback()
         logger.error(f"Erro interno: {str(error)}")
-        
-        # Garantir que headers CORS sejam enviados mesmo em erro
+
         response = jsonify({'message': 'Erro interno do servidor'})
         response.status_code = 500
-        
-        # Aplicar headers CORS manualmente
-        try:
-            origin = request.headers.get('Origin')
-            if origin:
-                if config_name == 'production':
-                    allowed_origins = [
-                        'https://gedo-cimcop.vercel.app',
-                        'https://gedo-cimcop-frontend.vercel.app'
-                    ]
-                    if origin in allowed_origins or origin.endswith('.vercel.app'):
-                        response.headers['Access-Control-Allow-Origin'] = origin
-                        response.headers['Access-Control-Allow-Credentials'] = 'true'
-                else:
-                    response.headers['Access-Control-Allow-Origin'] = origin
-                    response.headers['Access-Control-Allow-Credentials'] = 'true'
-        except Exception as e:
-            logger.debug(f"Erro ao aplicar CORS em erro 500: {e}")
-        
-        return response
+        return apply_cors_headers(response)
 
     @app.errorhandler(413)
     def too_large(error):
-        # Garantir que headers CORS sejam enviados mesmo em erro
         response = jsonify({'message': 'Arquivo muito grande'})
         response.status_code = 413
-        
-        # Aplicar headers CORS manualmente
-        try:
-            origin = request.headers.get('Origin')
-            if origin:
-                if config_name == 'production':
-                    allowed_origins = [
-                        'https://gedo-cimcop.vercel.app',
-                        'https://gedo-cimcop-frontend.vercel.app'
-                    ]
-                    if origin in allowed_origins or origin.endswith('.vercel.app'):
-                        response.headers['Access-Control-Allow-Origin'] = origin
-                        response.headers['Access-Control-Allow-Credentials'] = 'true'
-                else:
-                    response.headers['Access-Control-Allow-Origin'] = origin
-                    response.headers['Access-Control-Allow-Credentials'] = 'true'
-        except Exception as e:
-            logger.debug(f"Erro ao aplicar CORS em erro 413: {e}")
-        
-        return response
+        return apply_cors_headers(response)
 
-    # Middleware customizado para validar CSRF stateless
+    # CORREÇÃO: CSRF mais flexível para diagnóstico
     @app.before_request
     def check_csrf():
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
-            # Exceções: endpoints públicos, login, etc
+            # Exceções: endpoints públicos
             public_endpoints = [
                 'csrf.get_csrf_token',
                 'auth.login',
                 'password_reset.forgot_password',
                 'password_reset.reset_password',
-                'password_reset.validate_reset_token'
+                'password_reset.validate_reset_token',
+                'health_check'  # ADICIONADO: health check público
             ]
+
             if request.endpoint in public_endpoints:
                 return
-            token = request.headers.get('X-CSRFToken') or request.cookies.get('csrf_token')
-            if not token or not validate_csrf_token(token):
-                return jsonify({'message': 'CSRF token missing or invalid'}), 400
+
+            # CORREÇÃO: Log para diagnóstico
+            token = request.headers.get(
+                'X-CSRFToken') or request.cookies.get('csrf_token')
+            if not token:
+                logger.warning(f"CSRF token ausente para {request.endpoint}")
+                return jsonify({'message': 'CSRF token missing'}), 400
+
+            if not validate_csrf_token(token):
+                logger.warning(f"CSRF token inválido para {request.endpoint}")
+                return jsonify({'message': 'CSRF token invalid'}), 400
 
     limiter.init_app(app)
 
@@ -403,7 +371,7 @@ def create_default_data():
             )
             db.session.add(tipo)
 
-    # NOVO: Criar classificações padrão
+    # Criar classificações padrão
     classificacoes_padrao = [
         # Atividades em Campo
         ("Atividades em Campo", "Aceleração de Atividades"),
@@ -513,10 +481,8 @@ with app.app_context():
     db.create_all()
     logger.info("🗄️ Tabelas do banco de dados criadas/verificadas")
 
-    # NOVO: Executar migração das colunas Blob
+    # Executar migrações
     migrate_blob_columns()
-
-    # NOVO: Executar migração das colunas de Classificação
     migrate_classificacao_columns()
 
     if create_default_data():
@@ -544,29 +510,42 @@ def serve(path):
 
 
 @app.route('/api/health', methods=['GET'])
-@limiter.exempt  # Excluir do rate limiting
+@limiter.exempt
 def health_check():
-    """Verificação de saúde da API"""
-    return {
-        'status': 'ok',
-        'message': 'GEDO CIMCOP API está funcionando',
-        'version': '1.0.0',
-        'environment': os.getenv('FLASK_ENV', 'development'),
-        'cors_enabled': True,
-        'vercel_blob_enabled': bool(os.getenv('BLOB_READ_WRITE_TOKEN')),
-        'features': [
-            'Autenticação',
-            'Gestão de Obras',
-            'Registros de Documentos',
-            'Pesquisa Avançada',
-            'Dashboard',
-            'Configurações',
-            'Importação em Lote',
-            'Reset de Senha',
-            'Vercel Blob Storage',
-            'Sistema de Classificação'
-        ]
-    }, 200
+    """Verificação de saúde da API - CRÍTICO para diagnóstico de Network Error"""
+    try:
+        # Testar conexão com banco
+        db.session.execute(text('SELECT 1'))
+
+        return {
+            'status': 'ok',
+            'message': 'GEDO CIMCOP API está funcionando',
+            'version': '1.0.0',
+            'environment': os.getenv('FLASK_ENV', 'development'),
+            'cors_enabled': True,
+            'database_connected': True,
+            'vercel_blob_enabled': bool(os.getenv('BLOB_READ_WRITE_TOKEN')),
+            'timestamp': db.session.execute(text('SELECT NOW()')).scalar() if os.getenv('DATABASE_URL') else 'SQLite',
+            'features': [
+                'Autenticação',
+                'Gestão de Obras',
+                'Registros de Documentos',
+                'Pesquisa Avançada',
+                'Dashboard',
+                'Configurações',
+                'Importação em Lote',
+                'Reset de Senha',
+                'Vercel Blob Storage',
+                'Sistema de Classificação'
+            ]
+        }, 200
+    except Exception as e:
+        logger.error(f"Health check falhou: {e}")
+        return {
+            'status': 'error',
+            'message': f'Erro no health check: {str(e)}',
+            'database_connected': False
+        }, 500
 
 
 if __name__ == '__main__':

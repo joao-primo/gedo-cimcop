@@ -1,3 +1,5 @@
+"use client"
+
 import { useState, useEffect } from "react"
 import { useNavigate, useSearchParams } from "react-router-dom"
 import { useAuth } from "../contexts/AuthContext"
@@ -6,7 +8,8 @@ import { Button } from "./ui/button"
 import { Input } from "./ui/input"
 import { Label } from "./ui/label"
 import { Alert, AlertDescription } from "./ui/alert"
-import { Eye, EyeOff, AlertCircle, CheckCircle, Info } from "lucide-react"
+import { Eye, EyeOff, AlertCircle, CheckCircle, Info, Wifi, WifiOff } from "lucide-react"
+import { testConnection } from "../services/api"
 
 export default function Login() {
   const [email, setEmail] = useState("")
@@ -16,9 +19,25 @@ export default function Login() {
   const [success, setSuccess] = useState("")
   const [warning, setWarning] = useState("")
   const [loading, setLoading] = useState(false)
+  const [connectionStatus, setConnectionStatus] = useState("unknown") // unknown, connected, disconnected
   const [searchParams] = useSearchParams()
   const navigate = useNavigate()
   const { login } = useAuth()
+
+  // ADICIONADO: Testar conectividade ao carregar o componente
+  useEffect(() => {
+    const checkConnection = async () => {
+      console.log("🔍 Verificando conectividade com o backend...")
+      const connected = await testConnection()
+      setConnectionStatus(connected ? "connected" : "disconnected")
+
+      if (!connected) {
+        setError("Não foi possível conectar ao servidor. Verifique sua conexão ou tente novamente.")
+      }
+    }
+
+    checkConnection()
+  }, [])
 
   useEffect(() => {
     // Verificar mensagens da URL
@@ -54,6 +73,12 @@ export default function Login() {
       return
     }
 
+    // ADICIONADO: Verificar conectividade antes de tentar login
+    if (connectionStatus === "disconnected") {
+      setError("Sem conexão com o servidor. Verifique sua internet e tente novamente.")
+      return
+    }
+
     setLoading(true)
 
     try {
@@ -75,9 +100,32 @@ export default function Login() {
       }
     } catch (error) {
       console.error("Erro no login:", error)
-      setError("Erro interno do servidor")
+
+      // ADICIONADO: Tratamento específico para Network Error
+      if (error.code === "ERR_NETWORK") {
+        setError("Erro de conexão com o servidor. Verifique sua internet e tente novamente.")
+        setConnectionStatus("disconnected")
+      } else {
+        setError(error.message || "Erro interno do servidor")
+      }
     } finally {
       setLoading(false)
+    }
+  }
+
+  // ADICIONADO: Função para tentar reconectar
+  const handleReconnect = async () => {
+    setConnectionStatus("unknown")
+    setError("")
+
+    const connected = await testConnection()
+    setConnectionStatus(connected ? "connected" : "disconnected")
+
+    if (connected) {
+      setSuccess("Conexão restabelecida!")
+      setTimeout(() => setSuccess(""), 3000)
+    } else {
+      setError("Ainda não foi possível conectar ao servidor.")
     }
   }
 
@@ -88,6 +136,36 @@ export default function Login() {
         <div className="text-center mb-8">
           <h1 className="text-4xl font-bold text-gray-900 mb-2">GEDO CIMCOP</h1>
           <p className="text-gray-600">Sistema de Gestão de Obras</p>
+
+          {/* ADICIONADO: Indicador de status de conexão */}
+          <div className="flex items-center justify-center mt-4 space-x-2">
+            {connectionStatus === "connected" && (
+              <>
+                <Wifi className="h-4 w-4 text-green-600" />
+                <span className="text-sm text-green-600">Conectado</span>
+              </>
+            )}
+            {connectionStatus === "disconnected" && (
+              <>
+                <WifiOff className="h-4 w-4 text-red-600" />
+                <span className="text-sm text-red-600">Desconectado</span>
+                <Button
+                  variant="link"
+                  size="sm"
+                  onClick={handleReconnect}
+                  className="text-xs text-blue-600 hover:text-blue-800"
+                >
+                  Tentar novamente
+                </Button>
+              </>
+            )}
+            {connectionStatus === "unknown" && (
+              <>
+                <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-gray-400"></div>
+                <span className="text-sm text-gray-600">Verificando...</span>
+              </>
+            )}
+          </div>
         </div>
 
         {/* Login Card */}
@@ -128,7 +206,7 @@ export default function Login() {
                   placeholder="seu.email@exemplo.com"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
-                  disabled={loading}
+                  disabled={loading || connectionStatus === "disconnected"}
                   className="h-11"
                 />
               </div>
@@ -142,7 +220,7 @@ export default function Login() {
                     placeholder="Digite sua senha"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    disabled={loading}
+                    disabled={loading || connectionStatus === "disconnected"}
                     className="h-11 pr-10"
                   />
                   <Button
@@ -151,7 +229,7 @@ export default function Login() {
                     size="sm"
                     className="absolute right-0 top-0 h-full px-3 py-2 hover:bg-transparent"
                     onClick={() => setShowPassword(!showPassword)}
-                    disabled={loading}
+                    disabled={loading || connectionStatus === "disconnected"}
                   >
                     {showPassword ? (
                       <EyeOff className="h-4 w-4 text-gray-400" />
@@ -168,17 +246,24 @@ export default function Login() {
                   variant="link"
                   className="px-0 font-normal text-sm text-blue-600 hover:text-blue-800"
                   onClick={() => navigate("/esqueci-senha")}
+                  disabled={connectionStatus === "disconnected"}
                 >
                   Esqueceu sua senha?
                 </Button>
               </div>
 
-              <Button type="submit" className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white" disabled={loading}>
+              <Button
+                type="submit"
+                className="w-full h-11 bg-gray-900 hover:bg-gray-800 text-white"
+                disabled={loading || connectionStatus === "disconnected"}
+              >
                 {loading ? (
                   <div className="flex items-center">
                     <div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white mr-2"></div>
                     Entrando...
                   </div>
+                ) : connectionStatus === "disconnected" ? (
+                  "Sem conexão"
                 ) : (
                   "Entrar"
                 )}
@@ -191,6 +276,13 @@ export default function Login() {
         <div className="text-center mt-8 text-sm text-gray-500">
           <p>Sistema de Gestão de Obras</p>
           <p>Versão 1.0</p>
+          {/* ADICIONADO: Informações de debug em desenvolvimento */}
+          {import.meta.env.DEV && (
+            <div className="mt-2 text-xs">
+              <p>API URL: {import.meta.env.VITE_API_URL}</p>
+              <p>Status: {connectionStatus}</p>
+            </div>
+          )}
         </div>
       </div>
     </div>

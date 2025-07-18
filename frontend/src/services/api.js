@@ -1,68 +1,124 @@
 import axios from "axios"
 
-// Configuração base do axios
+// CORREÇÃO CRÍTICA: Configuração mais robusta para resolver Network Error
 const api = axios.create({
-  baseURL: import.meta.env.VITE_API_URL,
-  timeout: 30000, // ← AUMENTADO: 30 segundos para downloads grandes
+  baseURL: import.meta.env.VITE_API_URL || "http://localhost:5000",
+  timeout: 30000,
+  withCredentials: true,
   headers: {
     "Content-Type": "application/json",
+    // ADICIONADO: Headers para evitar problemas de CORS preflight
+    Accept: "application/json",
   },
 })
 
-// Função para buscar o token CSRF
-let csrfToken = null;
-export async function fetchCsrfToken() {
+// CORREÇÃO: Função para testar conectividade antes de usar CSRF
+let csrfToken = null
+let connectionTested = false
+
+export async function testConnection() {
   try {
-    const res = await api.get('/csrf-token');
-    csrfToken = res.data.csrf_token;
-    return csrfToken;
-  } catch (err) {
-    console.error('Erro ao buscar CSRF token:', err);
-    return null;
+    console.log("🔍 Testando conectividade com:", import.meta.env.VITE_API_URL)
+    const response = await api.get("/api/health", { timeout: 10000 })
+    console.log("✅ Conectividade OK:", response.data)
+    connectionTested = true
+    return true
+  } catch (error) {
+    console.error("❌ Falha na conectividade:", error.message)
+    console.error("🔧 URL configurada:", import.meta.env.VITE_API_URL)
+    console.error("🔧 Erro completo:", error)
+    return false
   }
 }
 
-// Interceptor para adicionar token CSRF automaticamente
+export async function fetchCsrfToken() {
+  try {
+    // ADICIONADO: Testar conectividade primeiro
+    if (!connectionTested) {
+      const connected = await testConnection()
+      if (!connected) {
+        throw new Error("Não foi possível conectar ao servidor")
+      }
+    }
+
+    console.log("🔐 Buscando CSRF token...")
+    const res = await api.get("/api/csrf-token")
+    csrfToken = res.data.csrf_token
+    console.log("✅ CSRF token obtido")
+    return csrfToken
+  } catch (err) {
+    console.error("❌ Erro ao buscar CSRF token:", err)
+
+    // ADICIONADO: Diagnóstico mais detalhado
+    if (err.code === "ERR_NETWORK") {
+      console.error("🚨 NETWORK ERROR - Possíveis causas:")
+      console.error("   1. Backend não está rodando")
+      console.error("   2. URL incorreta:", import.meta.env.VITE_API_URL)
+      console.error("   3. Problema de CORS")
+      console.error("   4. Firewall/Proxy bloqueando")
+    }
+
+    return null
+  }
+}
+
+// CORREÇÃO: Interceptor mais robusto com melhor tratamento de erros
 api.interceptors.request.use(
   async (config) => {
     const token = localStorage.getItem("token")
     if (token) {
       config.headers.Authorization = `Bearer ${token}`
     }
+
     // Adicionar CSRF apenas em métodos mutáveis
-    const mutating = ["post", "put", "patch", "delete"];
+    const mutating = ["post", "put", "patch", "delete"]
     if (mutating.includes(config.method)) {
       if (!csrfToken) {
-        await fetchCsrfToken();
+        await fetchCsrfToken()
       }
       if (csrfToken) {
-        config.headers["X-CSRFToken"] = csrfToken;
+        config.headers["X-CSRFToken"] = csrfToken
       }
     }
-    console.log("Fazendo requisição:", config.method?.toUpperCase(), config.url)
+
+    console.log("📤 Requisição:", config.method?.toUpperCase(), config.url)
     return config
   },
   (error) => {
-    console.error("Erro na requisição:", error)
+    console.error("❌ Erro na configuração da requisição:", error)
     return Promise.reject(error)
   },
 )
 
-// Interceptor para tratar respostas e erros
+// CORREÇÃO: Interceptor de resposta com diagnóstico melhorado
 api.interceptors.response.use(
   (response) => {
-    console.log("Resposta recebida:", response.status, response.config.url)
+    console.log("📥 Resposta:", response.status, response.config.url)
     return response
   },
   (error) => {
-    console.error("Erro na resposta:", error.response?.status, error.config?.url, error.response?.data)
+    console.error("❌ Erro na resposta:", error.response?.status, error.config?.url, error.response?.data)
 
-    // Se token expirou, redirecionar para login, exceto se for a própria rota de login
-    if (
-      error.response?.status === 401 &&
-      error.config?.url &&
-      !error.config.url.includes("/auth/login")
-    ) {
+    // ADICIONADO: Diagnóstico específico para Network Error
+    if (error.code === "ERR_NETWORK") {
+      console.error("🚨 NETWORK ERROR DETECTADO:")
+      console.error("   URL tentada:", error.config?.url)
+      console.error("   Base URL:", error.config?.baseURL)
+      console.error("   Método:", error.config?.method)
+      console.error("   Headers:", error.config?.headers)
+
+      // Tentar diagnosticar a causa
+      if (error.config?.url?.includes("undefined")) {
+        console.error("   🔍 CAUSA PROVÁVEL: URL contém 'undefined'")
+      }
+
+      if (!import.meta.env.VITE_API_URL) {
+        console.error("   🔍 CAUSA PROVÁVEL: VITE_API_URL não está definida")
+      }
+    }
+
+    // Se token expirou, redirecionar para login
+    if (error.response?.status === 401 && error.config?.url && !error.config.url.includes("/auth/login")) {
       localStorage.removeItem("token")
       localStorage.removeItem("user")
       window.location.href = "/login"
@@ -74,76 +130,84 @@ api.interceptors.response.use(
 
 // APIs de Autenticação
 export const authAPI = {
-  login: (email, password) => api.post("/auth/login", { email, password }),
-  me: () => api.get("/auth/me"),
-  logout: () => api.post("/auth/logout"),
-  forgotPassword: (email) => api.post("/forgot-password", { email }),
-  resetPassword: (token, newPassword) => api.post("/reset-password", { token, password: newPassword }),
-  changePassword: (data) => api.post("/auth/change-password", data),
-  getPasswordStatus: () => api.get("/auth/password-status"),
+  login: async (email, password) => {
+    try {
+      console.log("🔐 Tentando login...")
+      const response = await api.post("/api/auth/login", { email, password })
+      console.log("✅ Login bem-sucedido")
+      return response
+    } catch (error) {
+      console.error("❌ Erro no login:", error)
+      throw error
+    }
+  },
+  me: () => api.get("/api/auth/me"),
+  logout: () => api.post("/api/auth/logout"),
+  forgotPassword: (email) => api.post("/api/forgot-password", { email }),
+  resetPassword: (token, newPassword) => api.post("/api/reset-password", { token, password: newPassword }),
+  changePassword: (data) => api.post("/api/auth/change-password", data),
+  getPasswordStatus: () => api.get("/api/auth/password-status"),
 }
 
 // APIs do Dashboard
 export const dashboardAPI = {
-  getEstatisticas: (params = {}) => api.get("/dashboard/estatisticas", { params }),
-  getAtividadesRecentes: (limit = 10, obra_id = null) => api.get(`/dashboard/atividades-recentes?limit=${limit}${obra_id && obra_id !== "todas" ? `&obra_id=${obra_id}` : ""}`),
+  getEstatisticas: (params = {}) => api.get("/api/dashboard/estatisticas", { params }),
+  getAtividadesRecentes: (limit = 10, obra_id = null) =>
+    api.get(
+      `/api/dashboard/atividades-recentes?limit=${limit}${obra_id && obra_id !== "todas" ? `&obra_id=${obra_id}` : ""}`,
+    ),
   getTimeline: (dias = 30, obra_id = null) => {
-    let url = `/dashboard/timeline/${dias}`;
+    let url = `/api/dashboard/timeline/${dias}`
     if (obra_id && obra_id !== "todas") {
-      url += `?obra_id=${obra_id}`;
+      url += `?obra_id=${obra_id}`
     }
-    return api.get(url);
+    return api.get(url)
   },
 }
 
 // APIs de Pesquisa
 export const pesquisaAPI = {
-  getFiltros: () => api.get("/pesquisa/filtros"),
-  pesquisar: (params) => api.get("/pesquisa/", { params }),
-  exportar: (filtros) => api.post("/pesquisa/exportar", filtros, { responseType: "blob" }),
-  visualizar: (id) => api.get(`/pesquisa/${id}/visualizar`),
+  getFiltros: () => api.get("/api/pesquisa/filtros"),
+  pesquisar: (params) => api.get("/api/pesquisa/", { params }),
+  exportar: (filtros) => api.post("/api/pesquisa/exportar", filtros, { responseType: "blob" }),
+  visualizar: (id) => api.get(`/api/pesquisa/${id}/visualizar`),
 }
 
 // APIs de Registros
 export const registrosAPI = {
-  listar: (params) => api.get("/registros/", { params }),
+  listar: (params) => api.get("/api/registros/", { params }),
   criar: (data) => {
-    return api.post("/registros/", data, {
+    return api.post("/api/registros/", data, {
       headers: {
-        "Content-Type": undefined, // Deixar o browser definir automaticamente
+        "Content-Type": undefined,
       },
     })
   },
-  obter: (id) => api.get(`/registros/${id}`),
-  atualizar: (id, data) => api.put(`/registros/${id}`, data),
-  deletar: (id) => api.delete(`/registros/${id}`),
-  // ← CORREÇÃO CRÍTICA: Melhor tratamento do filename no download
+  obter: (id) => api.get(`/api/registros/${id}`),
+  atualizar: (id, data) => api.put(`/api/registros/${id}`, data),
+  deletar: (id) => api.delete(`/api/registros/${id}`),
   downloadAnexo: async (id, nomeOriginal = null) => {
     try {
       console.log("🔽 Baixando arquivo via backend proxy:", `/api/registros/${id}/download`)
 
-      const response = await api.get(`/registros/${id}/download`, {
-        responseType: "blob", // Importante para arquivos
-        timeout: 60000, // 60 segundos para downloads grandes
+      const response = await api.get(`/api/registros/${id}/download`, {
+        responseType: "blob",
+        timeout: 60000,
       })
 
-      // ← CORREÇÃO CRÍTICA: Melhor extração do filename
       const contentDisposition = response.headers["content-disposition"]
       let filename = nomeOriginal || `anexo_${id}`
 
       if (contentDisposition) {
-        // Tentar extrair filename do header Content-Disposition
         const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
         if (filenameMatch) {
-          const extractedFilename = filenameMatch[1].replace(/['"]/g, "") // Remover aspas
-          // Usar o nome extraído se for válido
+          const extractedFilename = filenameMatch[1].replace(/['"]/g, "")
           if (extractedFilename && extractedFilename !== "null" && extractedFilename !== "undefined") {
             filename = extractedFilename
           }
         }
       }
 
-      // ← CORREÇÃO: Se ainda não tem extensão, tentar detectar pelo Content-Type
       if (!filename.includes(".")) {
         const contentType = response.headers["content-type"]
         const extensionMap = {
@@ -163,10 +227,6 @@ export const registrosAPI = {
         }
       }
 
-      console.log("📎 Filename detectado:", filename)
-      console.log("📎 Content-Type:", response.headers["content-type"])
-
-      // Criar URL do blob e fazer download
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement("a")
       link.href = url
@@ -181,7 +241,6 @@ export const registrosAPI = {
     } catch (error) {
       console.error("❌ Erro ao baixar arquivo:", error)
 
-      // Mensagens de erro mais específicas
       if (error.response?.status === 404) {
         throw new Error("Arquivo não encontrado")
       } else if (error.response?.status === 403) {
@@ -194,64 +253,63 @@ export const registrosAPI = {
     }
   },
   importarLote: (formData) =>
-    api.post("/importacao/lote", formData, {
+    api.post("/api/importacao/lote", formData, {
       headers: { "Content-Type": "multipart/form-data" },
     }),
 }
 
 // APIs de Obras
 export const obrasAPI = {
-  listar: () => api.get("/obras/"),
-  criar: (data) => api.post("/obras/", data),
-  obter: (id) => api.get(`/obras/${id}`),
-  atualizar: (id, data) => api.put(`/obras/${id}`, data),
-  deletar: (id) => api.delete(`/obras/${id}`),
+  listar: () => api.get("/api/obras/"),
+  criar: (data) => api.post("/api/obras/", data),
+  obter: (id) => api.get(`/api/obras/${id}`),
+  atualizar: (id, data) => api.put(`/api/obras/${id}`, data),
+  deletar: (id) => api.delete(`/api/obras/${id}`),
 }
 
 // APIs de Usuários
 export const usuariosAPI = {
-  listar: () => api.get("/users/"),
-  criar: (data) => api.post("/users/", data),
-  obter: (id) => api.get(`/users/${id}`),
-  atualizar: (id, data) => api.put(`/users/${id}`, data),
-  deletar: (id) => api.delete(`/users/${id}`),
+  listar: () => api.get("/api/users/"),
+  criar: (data) => api.post("/api/users/", data),
+  obter: (id) => api.get(`/api/users/${id}`),
+  atualizar: (id, data) => api.put(`/api/users/${id}`, data),
+  deletar: (id) => api.delete(`/api/users/${id}`),
 }
 
 // APIs de Tipos de Registro
 export const tiposRegistroAPI = {
-  listar: () => api.get("/tipos-registro/"),
-  listarTodos: () => api.get("/tipos-registro/all"),
-  criar: (data) => api.post("/tipos-registro/", data),
-  obter: (id) => api.get(`/tipos-registro/${id}`),
-  atualizar: (id, data) => api.put(`/tipos-registro/${id}`, data),
-  deletar: (id) => api.delete(`/tipos-registro/${id}`),
+  listar: () => api.get("/api/tipos-registro/"),
+  listarTodos: () => api.get("/api/tipos-registro/all"),
+  criar: (data) => api.post("/api/tipos-registro/", data),
+  obter: (id) => api.get(`/api/tipos-registro/${id}`),
+  atualizar: (id, data) => api.put(`/api/tipos-registro/${id}`, data),
+  deletar: (id) => api.delete(`/api/tipos-registro/${id}`),
 }
 
-// NOVO: APIs de Classificações
+// APIs de Classificações
 export const classificacoesAPI = {
-  listar: () => api.get("/classificacoes/"),
-  grupos: () => api.get("/classificacoes/grupos"),
-  subgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${encodeURIComponent(grupo)}`),
-  criar: (data) => api.post("/classificacoes/", data),
-  atualizar: (id, data) => api.put(`/classificacoes/${id}`, data),
-  deletar: (id) => api.delete(`/classificacoes/${id}`),
+  listar: () => api.get("/api/classificacoes/"),
+  grupos: () => api.get("/api/classificacoes/grupos"),
+  subgrupos: (grupo) => api.get(`/api/classificacoes/subgrupos/${encodeURIComponent(grupo)}`),
+  criar: (data) => api.post("/api/classificacoes/", data),
+  atualizar: (id, data) => api.put(`/api/classificacoes/${id}`, data),
+  deletar: (id) => api.delete(`/api/classificacoes/${id}`),
 }
 
 // APIs de Configurações
 export const configuracoesAPI = {
-  get: () => api.get("/configuracoes/"),
-  save: (data) => api.post("/configuracoes/", data),
-  backup: () => api.post("/configuracoes/backup"),
-  reset: () => api.post("/configuracoes/reset"),
+  get: () => api.get("/api/configuracoes/"),
+  save: (data) => api.post("/api/configuracoes/", data),
+  backup: () => api.post("/api/configuracoes/backup"),
+  reset: () => api.post("/api/configuracoes/reset"),
 }
 
 // APIs de Workflow
 export const workflowAPI = {
-  listar: () => api.get("/workflow/"),
-  criar: (data) => api.post("/workflow/", data),
-  atualizar: (id, data) => api.put(`/workflow/${id}`, data),
-  deletar: (id) => api.delete(`/workflow/${id}`),
+  listar: () => api.get("/api/workflow/"),
+  criar: (data) => api.post("/api/workflow/", data),
+  atualizar: (id, data) => api.put(`/api/workflow/${id}`, data),
+  deletar: (id) => api.delete(`/api/workflow/${id}`),
 }
 
-// Export da instância principal para casos especiais
 export default api

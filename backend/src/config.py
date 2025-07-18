@@ -14,9 +14,9 @@ class Config:
 
     # Session settings
     PERMANENT_SESSION_LIFETIME = timedelta(hours=24)
-    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'True').lower() == 'true'
+    SESSION_COOKIE_SECURE = os.environ.get('SESSION_COOKIE_SECURE', 'False').lower() == 'true'
     SESSION_COOKIE_HTTPONLY = os.environ.get('SESSION_COOKIE_HTTPONLY', 'True').lower() == 'true'
-    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'None')
+    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'Lax')
 
     # Email settings
     EMAIL_SERVIDOR = os.environ.get('EMAIL_SERVIDOR', 'smtp.gmail.com')
@@ -29,10 +29,10 @@ class Config:
     # Frontend URL
     FRONTEND_URL = os.environ.get('FRONTEND_URL', 'http://localhost:5173')
 
-    # Security headers
+    # CORREÇÃO: Headers de segurança balanceados
     SECURITY_HEADERS = {
         'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY',
+        'X-Frame-Options': 'SAMEORIGIN',
         'X-XSS-Protection': '1; mode=block',
     }
 
@@ -88,20 +88,39 @@ class ProductionConfig(Config):
         SQLALCHEMY_DATABASE_URI = 'sqlite:///' + \
             os.path.join(os.path.dirname(__file__), 'database', 'app.db')
 
-    # Configurações de segurança para produção
-    SESSION_COOKIE_SECURE = True  # Requer HTTPS
-    SESSION_COOKIE_HTTPONLY = os.environ.get('SESSION_COOKIE_HTTPONLY', 'True').lower() == 'true'
-    SESSION_COOKIE_SAMESITE = os.environ.get('SESSION_COOKIE_SAMESITE', 'None')
+    # CORREÇÃO: Configurações de cookies seguras mas funcionais
+    SESSION_COOKIE_SECURE = True  # HTTPS obrigatório em produção
+    SESSION_COOKIE_HTTPONLY = True  # MANTIDO: Segurança contra XSS
+    SESSION_COOKIE_SAMESITE = 'None'  # NECESSÁRIO: Para cross-origin
+    
+    # CORREÇÃO: Headers de segurança balanceados
     SECURITY_HEADERS = {
         'X-Content-Type-Options': 'nosniff',
-        'X-Frame-Options': 'DENY',
+        'X-Frame-Options': 'SAMEORIGIN',  # Menos restritivo que DENY
         'X-XSS-Protection': '1; mode=block',
         'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
-        'Content-Security-Policy': "default-src 'self'",
+        # CSP removido para evitar bloqueios
     }
 
-    # CORS restritivo para produção
-    CORS_ORIGINS = [os.environ.get('FRONTEND_URL', 'https://yourdomain.com')]
+    # CORREÇÃO: CORS configurado corretamente
+    @property
+    def CORS_ORIGINS(self):
+        origins = [
+            'https://gedo-cimcop.vercel.app',
+            'https://gedo-cimcop-frontend.vercel.app'
+        ]
+        
+        # Adicionar FRONTEND_URL se definida
+        frontend_url = os.environ.get('FRONTEND_URL')
+        if frontend_url and frontend_url not in origins:
+            origins.append(frontend_url)
+        
+        # Adicionar origens do ambiente
+        env_origins = os.environ.get('CORS_ORIGINS', '')
+        if env_origins:
+            origins.extend([origin.strip() for origin in env_origins.split(',') if origin.strip()])
+        
+        return list(set(origins))  # Remover duplicatas
 
     @classmethod
     def init_app(cls, app):
