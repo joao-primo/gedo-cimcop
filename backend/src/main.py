@@ -54,10 +54,9 @@ def create_app(config_name=None):
     app.config.from_object(config[config_name])
     config[config_name].init_app(app)
 
-    # CORREÇÃO: CORS mais específico e seguro
-    config_instance = config[config_name]()
-
+    # CORREÇÃO CRÍTICA: CORS configurado corretamente
     if config_name == 'production':
+        config_instance = config[config_name]()
         allowed_origins = config_instance.CORS_ORIGINS
         logger.info(f"🌐 CORS configurado para produção: {allowed_origins}")
 
@@ -94,7 +93,7 @@ def create_app(config_name=None):
     # Inicializar extensões
     db.init_app(app)
 
-    # Registrar blueprints
+    # CORREÇÃO CRÍTICA: Registrar blueprints com prefixo /api
     app.register_blueprint(user_bp, url_prefix='/api/users')
     app.register_blueprint(auth_bp, url_prefix='/api/auth')
     app.register_blueprint(csrf_bp, url_prefix='/api')
@@ -109,12 +108,13 @@ def create_app(config_name=None):
     app.register_blueprint(workflow_bp, url_prefix='/api/workflow')
     app.register_blueprint(classificacoes_bp, url_prefix='/api/classificacoes')
 
-    # CORREÇÃO: Função auxiliar para verificar origem
+    # Função auxiliar para verificar origem
     def is_allowed_origin(origin, config_name):
         if not origin:
             return False
 
         if config_name == 'production':
+            config_instance = config[config_name]()
             allowed_origins = config_instance.CORS_ORIGINS
             return origin in allowed_origins or origin.endswith('.vercel.app')
         else:
@@ -189,7 +189,7 @@ def create_app(config_name=None):
         response.status_code = 413
         return apply_cors_headers(response)
 
-    # CORREÇÃO: CSRF mais flexível para diagnóstico
+    # CSRF mais flexível para diagnóstico
     @app.before_request
     def check_csrf():
         if request.method in ['POST', 'PUT', 'PATCH', 'DELETE']:
@@ -200,13 +200,13 @@ def create_app(config_name=None):
                 'password_reset.forgot_password',
                 'password_reset.reset_password',
                 'password_reset.validate_reset_token',
-                'health_check'  # ADICIONADO: health check público
+                'health_check'  # Health check público
             ]
 
             if request.endpoint in public_endpoints:
                 return
 
-            # CORREÇÃO: Log para diagnóstico
+            # Log para diagnóstico
             token = request.headers.get(
                 'X-CSRFToken') or request.cookies.get('csrf_token')
             if not token:
@@ -509,7 +509,8 @@ def serve(path):
     return "GEDO CIMCOP - Sistema de Gerenciamento de Documentos e Registros de Obras", 200
 
 
-@app.route('/api/health', methods=['GET'])
+# CORREÇÃO CRÍTICA: Health check sem prefixo /api (para evitar duplicação)
+@app.route('/health', methods=['GET'])
 @limiter.exempt
 def health_check():
     """Verificação de saúde da API - CRÍTICO para diagnóstico de Network Error"""
@@ -558,7 +559,7 @@ if __name__ == '__main__':
 
     logger.info("🚀 Iniciando servidor GEDO CIMCOP...")
     logger.info("📍 Acesse: http://localhost:5000")
-    logger.info("🔧 API Health Check: http://localhost:5000/api/health")
+    logger.info("🔧 API Health Check: http://localhost:5000/health")
 
     # Configurações de desenvolvimento
     app.run(
