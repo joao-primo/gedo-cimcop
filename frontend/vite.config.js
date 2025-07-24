@@ -12,12 +12,6 @@ export default defineConfig({
   },
   server: {
     historyApiFallback: true,
-    // Configuração adicional para SPA
-    historyApiFallback: {
-      rewrites: [
-        { from: /^\/(?!api).*$/, to: '/index.html' }
-      ]
-    }
   },
   build: {
     rollupOptions: {
