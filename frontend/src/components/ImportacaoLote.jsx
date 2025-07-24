@@ -5,7 +5,6 @@ import { useAuth } from "../contexts/AuthContext"
 import axios from "../services/api"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Badge } from "@/components/ui/badge"
@@ -145,22 +144,31 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
         registros: registrosProcessados,
       })
 
-      setMensagem({ tipo: "success", texto: response.data.message })
-
       // Simular progresso
       for (let i = 0; i <= 100; i += 10) {
         setProgresso(i)
         await new Promise((resolve) => setTimeout(resolve, 100))
       }
 
+      // Finalizar com sucesso
+      setMensagem({ tipo: "success", texto: response.data.message })
+      setLoading(false)
+
+      // Aguardar um pouco e então fechar/redirecionar
       setTimeout(() => {
-        onSuccess?.()
-        onClose?.()
-      }, 1000)
+        if (onSuccess && typeof onSuccess === "function") {
+          onSuccess()
+        }
+        if (onClose && typeof onClose === "function") {
+          onClose()
+        } else {
+          // Se não há função de fechamento, redirecionar para dashboard
+          window.location.href = "/dashboard"
+        }
+      }, 2000)
     } catch (error) {
       setMensagem({ tipo: "error", texto: error.response?.data?.message || "Erro ao finalizar importação." })
       setEtapa(3)
-    } finally {
       setLoading(false)
     }
   }
@@ -244,19 +252,46 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
 
           <div className="border-t pt-3">
             <Label className="text-sm font-medium">Anexar Documento *</Label>
-            <div className="flex items-center space-x-2 mt-2">
-              <Input
-                type="file"
-                onChange={handleAnexoChange}
-                disabled={enviandoAnexo || registro.anexo_enviado}
-                className="flex-1"
-                accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.txt"
-              />
-              {enviandoAnexo && <Loader2 className="w-4 h-4 animate-spin" />}
+            <div className="mt-2">
+              <div className="relative">
+                <input
+                  type="file"
+                  onChange={handleAnexoChange}
+                  disabled={enviandoAnexo || registro.anexo_enviado}
+                  className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                  accept=".pdf,.doc,.docx,.xls,.xlsx,.png,.jpg,.jpeg,.gif,.txt"
+                />
+                <div
+                  className={`border-2 border-dashed rounded-lg p-4 transition-all duration-200 ${
+                    registro.anexo_enviado
+                      ? "border-green-300 bg-green-50"
+                      : enviandoAnexo
+                        ? "border-blue-300 bg-blue-50"
+                        : "border-gray-300 hover:border-blue-400 hover:bg-blue-50 cursor-pointer"
+                  }`}
+                >
+                  <div className="flex items-center space-x-3">
+                    {enviandoAnexo ? (
+                      <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                    ) : registro.anexo_enviado ? (
+                      <CheckCircle className="h-5 w-5 text-green-600" />
+                    ) : (
+                      <Upload className="h-5 w-5 text-gray-400" />
+                    )}
+                    <div className="flex-1">
+                      <div className="text-sm font-medium text-gray-900">
+                        {registro.anexo_enviado
+                          ? `✓ ${registro.nome_arquivo_original}`
+                          : enviandoAnexo
+                            ? "Enviando arquivo..."
+                            : "Clique para selecionar arquivo"}
+                      </div>
+                      <p className="text-xs text-gray-500">PDF, DOC, XLS, PNG, JPG, etc.</p>
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
-            {registro.anexo_enviado && (
-              <p className="text-xs text-green-600 mt-1">✓ Arquivo: {registro.nome_arquivo_original}</p>
-            )}
           </div>
         </CardContent>
       </Card>
@@ -383,7 +418,12 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                 </div>
 
                 <div className="mt-6 pt-6 border-t">
-                  <Button onClick={downloadTemplate} disabled={loading} variant="outline" className="w-full">
+                  <Button
+                    onClick={downloadTemplate}
+                    disabled={loading}
+                    variant="outline"
+                    className="w-full bg-transparent"
+                  >
                     {loading ? (
                       <>
                         <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -418,37 +458,50 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
                   <div>
                     <Label className="text-base font-medium">Arquivo da Planilha *</Label>
                     <div className="mt-3">
-                      <Input 
-                        type="file" 
-                        onChange={handleFileChange} 
-                        accept=".xlsx,.xls,.csv" 
-                        className="h-12 text-base"
-                      />
+                      <div className="relative">
+                        <input
+                          type="file"
+                          onChange={handleFileChange}
+                          accept=".xlsx,.xls,.csv"
+                          className="absolute inset-0 w-full h-full opacity-0 cursor-pointer z-10"
+                          id="file-upload"
+                        />
+                        <div className="border-2 border-dashed border-gray-300 rounded-lg p-8 hover:border-blue-400 hover:bg-blue-50 transition-all duration-200 cursor-pointer">
+                          <div className="text-center">
+                            <Upload className="mx-auto h-12 w-12 text-gray-400 mb-4" />
+                            <div className="text-lg font-medium text-gray-900 mb-2">
+                              {arquivo ? arquivo.name : "Clique para selecionar arquivo"}
+                            </div>
+                            <p className="text-sm text-gray-500">Ou arraste e solte o arquivo aqui</p>
+                            <p className="text-xs text-gray-400 mt-2">Formatos aceitos: .xlsx, .xls, .csv</p>
+                          </div>
+                        </div>
+                      </div>
                     </div>
                     {arquivo && (
                       <div className="mt-3 p-3 bg-green-50 border border-green-200 rounded-lg">
                         <div className="flex items-center">
                           <CheckCircle className="h-5 w-5 text-green-600 mr-2" />
                           <span className="text-green-800 font-medium">Arquivo selecionado: {arquivo.name}</span>
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            onClick={() => setArquivo(null)}
+                            className="ml-auto text-green-600 hover:text-green-800"
+                          >
+                            <X className="h-4 w-4" />
+                          </Button>
                         </div>
                       </div>
                     )}
                   </div>
 
                   <div className="flex gap-4">
-                    <Button 
-                      variant="outline" 
-                      onClick={() => setEtapa(1)}
-                      className="flex-1"
-                    >
+                    <Button variant="outline" onClick={() => setEtapa(1)} className="flex-1">
                       Voltar
                     </Button>
-                    <Button 
-                      onClick={processarPlanilha} 
-                      disabled={!arquivo || loading} 
-                      className="flex-1"
-                      size="lg"
-                    >
+                    <Button onClick={processarPlanilha} disabled={!arquivo || loading} className="flex-1" size="lg">
                       {loading ? (
                         <>
                           <Loader2 className="mr-2 h-4 w-4 animate-spin" />
@@ -632,24 +685,59 @@ const ImportacaoLote = ({ onClose, onSuccess }) => {
         {etapa === 4 && (
           <div className="space-y-6">
             <Card className="shadow-lg">
-              <CardHeader className="bg-gradient-to-r from-blue-50 to-indigo-50 border-b">
+              <CardHeader
+                className={`border-b ${loading ? "bg-gradient-to-r from-blue-50 to-indigo-50" : "bg-gradient-to-r from-green-50 to-emerald-50"}`}
+              >
                 <CardTitle className="flex items-center">
-                  <Loader2 className="mr-2 h-5 w-5 animate-spin" />
-                  Finalizando Importação
+                  {loading ? (
+                    <>
+                      <Loader2 className="mr-2 h-5 w-5 animate-spin" />
+                      Finalizando Importação
+                    </>
+                  ) : (
+                    <>
+                      <CheckCircle className="mr-2 h-5 w-5 text-green-600" />
+                      Importação Concluída
+                    </>
+                  )}
                 </CardTitle>
-                <CardDescription>Criando registros e processando workflows...</CardDescription>
+                <CardDescription>
+                  {loading
+                    ? "Criando registros e processando workflows..."
+                    : "Todos os registros foram importados com sucesso!"}
+                </CardDescription>
               </CardHeader>
               <CardContent className="p-8 text-center">
                 <div className="mb-6">
-                  <div className="w-24 h-24 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+                  <div
+                    className={`w-24 h-24 rounded-full flex items-center justify-center mx-auto mb-4 ${
+                      loading ? "bg-blue-100" : "bg-green-100"
+                    }`}
+                  >
+                    {loading ? (
+                      <Loader2 className="h-12 w-12 text-blue-600 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-12 w-12 text-green-600" />
+                    )}
                   </div>
-                  <h3 className="text-xl font-semibold mb-2">Processando...</h3>
-                  <p className="text-gray-600">Aguarde enquanto finalizamos a importação</p>
+                  <h3 className="text-xl font-semibold mb-2">{loading ? "Processando..." : "Concluído!"}</h3>
+                  <p className="text-gray-600">
+                    {loading
+                      ? "Aguarde enquanto finalizamos a importação"
+                      : "A importação foi finalizada com sucesso. Redirecionando..."}
+                  </p>
                 </div>
-                
+
                 <Progress value={progresso} className="h-3 mb-4" />
-                <p className="text-gray-600">{progresso < 100 ? "Processando..." : "Concluído!"}</p>
+                <p className="text-gray-600">{progresso < 100 ? `${progresso}% concluído` : "100% concluído"}</p>
+
+                {!loading && (
+                  <div className="mt-6">
+                    <Button onClick={() => (window.location.href = "/dashboard")} className="px-8 py-3">
+                      Ir para Dashboard
+                    </Button>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
