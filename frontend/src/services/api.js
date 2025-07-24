@@ -39,6 +39,18 @@ api.interceptors.request.use(
         config.headers["X-CSRFToken"] = csrfToken;
       }
     }
+    // Só defina Content-Type se não for FormData
+    if (
+      config.data &&
+      typeof config.data === "object" &&
+      config.data.constructor &&
+      config.data.constructor.name === "FormData"
+    ) {
+      // Não defina Content-Type, deixe o browser/axios fazer
+      delete config.headers["Content-Type"];
+    } else {
+      config.headers["Content-Type"] = "application/json";
+    }
     console.log("Fazendo requisição:", config.method?.toUpperCase(), config.url)
     return config
   },
@@ -126,43 +138,16 @@ export const registrosAPI = {
 
       // ← CORREÇÃO CRÍTICA: Melhor extração do filename
       const contentDisposition = response.headers["content-disposition"]
-      let filename = nomeOriginal || `anexo_${id}`
-
+      let filename = nomeOriginal || `anexo_${id}`;
       if (contentDisposition) {
-        // Tentar extrair filename do header Content-Disposition
         const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/)
         if (filenameMatch) {
-          const extractedFilename = filenameMatch[1].replace(/['"]/g, "") // Remover aspas
-          // Usar o nome extraído se for válido
+          const extractedFilename = filenameMatch[1].replace(/['"]/g, "")
           if (extractedFilename && extractedFilename !== "null" && extractedFilename !== "undefined") {
             filename = extractedFilename
           }
         }
       }
-
-      // ← CORREÇÃO: Se ainda não tem extensão, tentar detectar pelo Content-Type
-      if (!filename.includes(".")) {
-        const contentType = response.headers["content-type"]
-        const extensionMap = {
-          "application/pdf": ".pdf",
-          "application/msword": ".doc",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document": ".docx",
-          "application/vnd.ms-excel": ".xls",
-          "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": ".xlsx",
-          "image/png": ".png",
-          "image/jpeg": ".jpg",
-          "image/gif": ".gif",
-          "text/plain": ".txt",
-        }
-
-        if (contentType && extensionMap[contentType]) {
-          filename += extensionMap[contentType]
-        }
-      }
-
-      console.log("📎 Filename detectado:", filename)
-      console.log("📎 Content-Type:", response.headers["content-type"])
-
       // Criar URL do blob e fazer download
       const url = window.URL.createObjectURL(new Blob([response.data]))
       const link = document.createElement("a")
@@ -172,83 +157,10 @@ export const registrosAPI = {
       link.click()
       link.remove()
       window.URL.revokeObjectURL(url)
-
-      console.log("✅ Download concluído:", filename)
       return { success: true, filename }
     } catch (error) {
       console.error("❌ Erro ao baixar arquivo:", error)
-
-      // Mensagens de erro mais específicas
-      if (error.response?.status === 404) {
-        throw new Error("Arquivo não encontrado")
-      } else if (error.response?.status === 403) {
-        throw new Error("Acesso negado ao arquivo")
-      } else if (error.code === "ECONNABORTED") {
-        throw new Error("Timeout no download - arquivo muito grande")
-      } else {
-        throw new Error("Erro ao baixar arquivo")
-      }
+      throw error
     }
   },
-  importarLote: (formData) =>
-    api.post("/importacao/lote", formData, {
-      headers: { "Content-Type": "multipart/form-data" },
-    }),
 }
-
-// APIs de Obras
-export const obrasAPI = {
-  listar: () => api.get("/obras/"),
-  criar: (data) => api.post("/obras/", data),
-  obter: (id) => api.get(`/obras/${id}`),
-  atualizar: (id, data) => api.put(`/obras/${id}`, data),
-  deletar: (id) => api.delete(`/obras/${id}`),
-}
-
-// APIs de Usuários
-export const usuariosAPI = {
-  listar: () => api.get("/users/"),
-  criar: (data) => api.post("/users/", data),
-  obter: (id) => api.get(`/users/${id}`),
-  atualizar: (id, data) => api.put(`/users/${id}`, data),
-  deletar: (id) => api.delete(`/users/${id}`),
-}
-
-// APIs de Tipos de Registro
-export const tiposRegistroAPI = {
-  listar: () => api.get("/tipos-registro/"),
-  listarTodos: () => api.get("/tipos-registro/all"),
-  criar: (data) => api.post("/tipos-registro/", data),
-  obter: (id) => api.get(`/tipos-registro/${id}`),
-  atualizar: (id, data) => api.put(`/tipos-registro/${id}`, data),
-  deletar: (id) => api.delete(`/tipos-registro/${id}`),
-}
-
-// NOVO: APIs de Classificações
-export const classificacoesAPI = {
-  listar: () => api.get("/classificacoes/"),
-  grupos: () => api.get("/classificacoes/grupos"),
-  subgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${encodeURIComponent(grupo)}`),
-  criar: (data) => api.post("/classificacoes/", data),
-  atualizar: (id, data) => api.put(`/classificacoes/${id}`, data),
-  deletar: (id) => api.delete(`/classificacoes/${id}`),
-}
-
-// APIs de Configurações
-export const configuracoesAPI = {
-  get: () => api.get("/configuracoes/"),
-  save: (data) => api.post("/configuracoes/", data),
-  backup: () => api.post("/configuracoes/backup"),
-  reset: () => api.post("/configuracoes/reset"),
-}
-
-// APIs de Workflow
-export const workflowAPI = {
-  listar: () => api.get("/workflow/"),
-  criar: (data) => api.post("/workflow/", data),
-  atualizar: (id, data) => api.put(`/workflow/${id}`, data),
-  deletar: (id) => api.delete(`/workflow/${id}`),
-}
-
-// Export da instância principal para casos especiais
-export default api
