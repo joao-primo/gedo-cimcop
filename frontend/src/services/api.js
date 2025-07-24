@@ -165,4 +165,58 @@ export const registrosAPI = {
   },
 }
 
+// APIs de Obras
+export const obrasAPI = {
+  listar: () => api.get("/obras/"),
+  criar: (data) => api.post("/obras/", data),
+  obter: (id) => api.get(`/obras/${id}`),
+  atualizar: (id, data) => api.put(`/obras/${id}`, data),
+  deletar: (id) => api.delete(`/obras/${id}`),
+};
+
+// APIs de Usuários
+export const usuariosAPI = {
+  listar: () => api.get("/users/"),
+  criar: (data) => api.post("/users/", data),
+  obter: (id) => api.get(`/users/${id}`),
+  atualizar: (id, data) => api.put(`/users/${id}`, data),
+  deletar: (id) => api.delete(`/users/${id}`),
+};
+
+// APIs de Tipos de Registro
+export const tiposRegistroAPI = {
+  listar: () => api.get("/tipos-registro/"),
+  listarTodos: () => api.get("/tipos-registro/all"),
+  criar: (data) => api.post("/tipos-registro/", data),
+  obter: (id) => api.get(`/tipos-registro/${id}`),
+  atualizar: (id, data) => api.put(`/tipos-registro/${id}`, data),
+  deletar: (id) => api.delete(`/tipos-registro/${id}`),
+};
+
+// APIs de Classificações
+export const classificacoesAPI = {
+  listar: () => api.get("/classificacoes/"),
+  grupos: () => api.get("/classificacoes/grupos"),
+  subgrupos: (grupo) => api.get(`/classificacoes/subgrupos/${encodeURIComponent(grupo)}`),
+  criar: (data) => api.post("/classificacoes/", data),
+  atualizar: (id, data) => api.put(`/classificacoes/${id}`, data),
+  deletar: (id) => api.delete(`/classificacoes/${id}`),
+};
+
+// APIs de Configurações
+export const configuracoesAPI = {
+  get: () => api.get("/configuracoes/"),
+  save: (data) => api.post("/configuracoes/", data),
+  backup: () => api.post("/configuracoes/backup"),
+  reset: () => api.post("/configuracoes/reset"),
+};
+
+// APIs de Workflow
+export const workflowAPI = {
+  listar: () => api.get("/workflow/"),
+  criar: (data) => api.post("/workflow/", data),
+  atualizar: (id, data) => api.put(`/workflow/${id}`, data),
+  deletar: (id) => api.delete(`/workflow/${id}`),
+};
+
 export default api;
