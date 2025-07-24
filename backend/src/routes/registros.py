@@ -794,9 +794,10 @@ def create_registro(current_user):
         # ← CORREÇÃO: Criação do registro com tratamento de erro
         try:
             logger.info(f"💾 CREATE REGISTRO: Criando registro no banco...")
-            # Remover file_hash se existir em file_info
-            if 'file_hash' in file_info:
-                del file_info['file_hash']
+            # Remover file_hash e detected_type se existirem em file_info
+            for key in ['file_hash', 'detected_type']:
+                if key in file_info:
+                    del file_info[key]
             registro = Registro(
                 titulo=titulo,
                 tipo_registro=tipo_registro,
