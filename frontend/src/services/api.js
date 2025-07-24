@@ -164,3 +164,5 @@ export const registrosAPI = {
     }
   },
 }
+
+export default api;
