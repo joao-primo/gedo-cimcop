@@ -2,6 +2,7 @@
 
 import { createContext, useContext, useState, useEffect } from "react"
 import axios from "../services/api"
+import { fetchCsrfToken } from "../services/api"
 
 const AuthContext = createContext()
 
@@ -56,6 +57,9 @@ export const AuthProvider = ({ children }) => {
 
       // Configurar token no axios
       axios.defaults.headers.common["Authorization"] = `Bearer ${token}`
+
+      // Buscar CSRF token após login
+      await fetchCsrfToken()
 
       // Atualizar estado do usuário
       setUser(userData)

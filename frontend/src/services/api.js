@@ -108,11 +108,8 @@ export const pesquisaAPI = {
 export const registrosAPI = {
   listar: (params) => api.get("/registros/", { params }),
   criar: (data) => {
-    return api.post("/registros/", data, {
-      headers: {
-        "Content-Type": undefined, // Deixar o browser definir automaticamente
-      },
-    })
+    // Não sobrescrever headers, deixar o interceptor adicionar o CSRF
+    return api.post("/registros/", data)
   },
   obter: (id) => api.get(`/registros/${id}`),
   atualizar: (id, data) => api.put(`/registros/${id}`, data),
